@@ -43,6 +43,8 @@ struct DeviceCfg {
     styles: Vec<String>,
     channel_param: Option<String>,
     restore: Option<u8>,
+    #[serde(default)]
+    reject_codes: Vec<u8>,
     read: Option<ReadCfg>,
 }
 
@@ -68,8 +70,9 @@ struct LabelsCfg {
 #[derive(Deserialize)]
 struct WriteCfg {
     id: String,
-    packet: u8,
+    packet: Option<u8>,
     sub: Option<u8>,
+    cc: Option<u8>,
     slots: Vec<SlotCfg>,
 }
 
@@ -106,61 +109,70 @@ enum KindCfg {
 
 fn main() -> ExitCode {
     let root = workspace_root();
-    let overlay_path = root.join("verified").join("poly-d.toml");
-    let out_path = root.join("crates/poly-d/src/descriptors.rs");
     let check = std::env::args().any(|arg| arg == "--check");
 
-    let overlay: Overlay = match std::fs::read_to_string(&overlay_path)
-        .map_err(|err| format!("read {}: {err}", overlay_path.display()))
-        .and_then(|text| toml::from_str(&text).map_err(|err| format!("parse overlay: {err}")))
-    {
-        Ok(overlay) => overlay,
+    let mut overlays: Vec<PathBuf> = match std::fs::read_dir(root.join("verified")) {
+        Ok(entries) => entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().is_some_and(|ext| ext == "toml"))
+            .collect(),
         Err(err) => {
-            eprintln!("xtask: {err}");
+            eprintln!("xtask: cannot read verified/: {err}");
             return ExitCode::FAILURE;
         }
     };
-
-    if let Err(err) = validate(&overlay) {
-        eprintln!("xtask: {err}");
+    overlays.sort();
+    if overlays.is_empty() {
+        eprintln!("xtask: no overlays in verified/");
         return ExitCode::FAILURE;
     }
 
-    let generated = emit(&overlay);
+    for overlay_path in overlays {
+        if let Err(err) = build_device(&root, &overlay_path, check) {
+            eprintln!("xtask: {err}");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn build_device(root: &Path, overlay_path: &Path, check: bool) -> Result<(), String> {
+    let stem = overlay_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .ok_or_else(|| format!("bad overlay name {}", overlay_path.display()))?;
+    let out_path = root.join("crates").join(stem).join("src/descriptors.rs");
+
+    let text = std::fs::read_to_string(overlay_path)
+        .map_err(|err| format!("read {}: {err}", overlay_path.display()))?;
+    let overlay: Overlay =
+        toml::from_str(&text).map_err(|err| format!("parse {}: {err}", overlay_path.display()))?;
+    validate(&overlay)?;
+
+    let generated = emit(&overlay, stem)?;
     if check {
-        match std::fs::read_to_string(&out_path) {
-            Ok(existing) if existing == generated => {
-                println!("xtask: {} is up to date", out_path.display());
-                ExitCode::SUCCESS
-            }
-            Ok(_) => {
-                eprintln!(
-                    "xtask: {} is stale; run `cargo run -p xtask`",
-                    out_path.display()
-                );
-                ExitCode::FAILURE
-            }
-            Err(err) => {
-                eprintln!("xtask: cannot read {}: {err}", out_path.display());
-                ExitCode::FAILURE
-            }
+        let existing = std::fs::read_to_string(&out_path)
+            .map_err(|err| format!("cannot read {}: {err}", out_path.display()))?;
+        if existing == generated {
+            println!("xtask: {} is up to date", out_path.display());
+            Ok(())
+        } else {
+            Err(format!(
+                "{} is stale; run `cargo run -p xtask`",
+                out_path.display()
+            ))
         }
     } else {
-        match std::fs::write(&out_path, &generated) {
-            Ok(()) => {
-                println!(
-                    "xtask: wrote {} ({} params, {} write groups)",
-                    out_path.display(),
-                    overlay.param.len(),
-                    overlay.write.len()
-                );
-                ExitCode::SUCCESS
-            }
-            Err(err) => {
-                eprintln!("xtask: cannot write {}: {err}", out_path.display());
-                ExitCode::FAILURE
-            }
-        }
+        std::fs::write(&out_path, &generated)
+            .map_err(|err| format!("cannot write {}: {err}", out_path.display()))?;
+        println!(
+            "xtask: wrote {} ({} params, {} write groups)",
+            out_path.display(),
+            overlay.param.len(),
+            overlay.write.len()
+        );
+        Ok(())
     }
 }
 
@@ -188,7 +200,10 @@ fn validate(overlay: &Overlay) -> Result<(), String> {
         if param.tab.trim().is_empty() || param.section.trim().is_empty() {
             return Err(format!("{} has an empty tab or section", param.id));
         }
-        if !matches!(param.evidence.as_str(), "qsg" | "verified" | "unsupported") {
+        if !matches!(
+            param.evidence.as_str(),
+            "qsg" | "verified" | "vendor-named" | "unsupported"
+        ) {
             return Err(format!(
                 "{}: unknown evidence {:?}",
                 param.id, param.evidence
@@ -258,6 +273,18 @@ fn validate(overlay: &Overlay) -> Result<(), String> {
         if !write_ids.insert(group.id.as_str()) {
             return Err(format!("duplicate write group {}", group.id));
         }
+        if group.packet.is_some() == group.cc.is_some() {
+            return Err(format!(
+                "write {}: set exactly one of `packet` or `cc`",
+                group.id
+            ));
+        }
+        if group.cc.is_some() && group.sub.is_some() {
+            return Err(format!(
+                "write {}: `sub` is only valid for packets",
+                group.id
+            ));
+        }
         let mut seen: HashSet<&str> = HashSet::new();
         for slot in &group.slots {
             if let SlotCfg::Param(id) = slot {
@@ -318,12 +345,12 @@ fn check_kind(kind: &KindCfg) -> Result<(), String> {
     Ok(())
 }
 
-fn emit(overlay: &Overlay) -> String {
+fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
     let mut out = String::new();
     let device = &overlay.device;
     let _ = writeln!(
         out,
-        "// @generated by `cargo run -p xtask` from verified/poly-d.toml — do not edit by hand."
+        "// @generated by `cargo run -p xtask` from verified/{overlay_name}.toml — do not edit by hand."
     );
     let _ = writeln!(out, "//");
     let _ = writeln!(
@@ -369,6 +396,7 @@ fn emit(overlay: &Overlay) -> String {
         };
         let evidence = match param.evidence.as_str() {
             "verified" => "Evidence::Verified",
+            "vendor-named" => "Evidence::VendorNamed",
             "unsupported" => "Evidence::Unsupported",
             _ => "Evidence::Qsg",
         };
@@ -391,9 +419,13 @@ fn emit(overlay: &Overlay) -> String {
         overlay.write.len()
     );
     for group in &overlay.write {
-        let addr = match group.sub {
-            Some(sub) => format!("Addr::PacketSub({:#04X}, {:#04X})", group.packet, sub),
-            None => format!("Addr::Packet({:#04X})", group.packet),
+        let addr = match (group.cc, group.packet, group.sub) {
+            (Some(cc), _, _) => format!("Addr::Cc({cc})"),
+            (None, Some(packet), Some(sub)) => {
+                format!("Addr::PacketSub({packet:#04X}, {sub:#04X})")
+            }
+            (None, Some(packet), None) => format!("Addr::Packet({packet:#04X})"),
+            (None, None, _) => return Err(format!("write {}: missing packet or cc", group.id)),
         };
         let slots = group
             .slots
@@ -443,6 +475,12 @@ fn emit(overlay: &Overlay) -> String {
         Some(id) => format!("Some({id:?})"),
         None => "None".to_string(),
     };
+    let reject_codes = device
+        .reject_codes
+        .iter()
+        .map(|code| format!("{code:#04X}"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let rejected = if overlay.rejected.is_empty() {
         "&[]".to_string()
     } else {
@@ -470,10 +508,11 @@ fn emit(overlay: &Overlay) -> String {
     let _ = writeln!(out, "    params: &PARAMS,");
     let _ = writeln!(out, "    writes: &WRITES,");
     let _ = writeln!(out, "    rejected: {rejected},");
+    let _ = writeln!(out, "    reject_codes: &[{}],", reject_codes);
     let _ = writeln!(out, "    notes: &[{}],", string_slice(&overlay.notes));
     let _ = writeln!(out, "    limits: &[{}],", string_slice(&overlay.limits));
     let _ = writeln!(out, "}};");
-    out
+    Ok(out)
 }
 
 fn string_slice(values: &[String]) -> String {

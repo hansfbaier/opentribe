@@ -8,3 +8,4 @@ license.workspace = true
 [dependencies]
 eframe.workspace = true
 midir.workspace = true
+serde_json = "1"

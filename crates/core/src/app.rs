@@ -10,7 +10,7 @@ use crate::descriptor::{self, Device, Evidence, Kind, Param, Values};
 use crate::log::{Dir, Log};
 use crate::midi::{self, MidiHub};
 use crate::sysex::{self, WriteStyle};
-use crate::widgets::{self, DANGER, MUTED, OK, WARN};
+use crate::widgets::{self, DANGER, HEADING, MUTED, OK, WARN};
 
 const PLAY_TAB: &str = "Play & test";
 const CONSOLE_TAB: &str = "Console";
@@ -33,7 +33,7 @@ pub struct TribeApp {
     device_id: u8,
     auto_apply: bool,
     dirty: bool,
-    last_sent: Vec<(u8, Vec<u8>)>,
+    last_sent: Vec<(u32, Vec<u8>)>,
     queue: Vec<OutMsg>,
     log: Log,
     param_tabs: Vec<&'static str>,
@@ -199,12 +199,16 @@ impl TribeApp {
 
     fn send_all(&mut self) {
         self.last_sent.clear();
-        for (group_id, bytes) in
-            descriptor::all_messages(self.device, &self.values, self.style, self.device_id)
-        {
+        for (group_id, bytes) in descriptor::all_messages(
+            self.device,
+            &self.values,
+            self.style,
+            self.device_id,
+            self.performance_channel(),
+        ) {
             if let Some(group) = self.device.write_group(group_id) {
                 let payload = descriptor::payload_for(&self.values, group);
-                self.remember(group.addr.packet(), &payload);
+                self.remember(group.addr.key(), &payload);
             }
             self.queue.push(OutMsg {
                 label: group_id.to_string(),
@@ -214,15 +218,15 @@ impl TribeApp {
         self.dirty = false;
     }
 
-    fn was_sent(&self, packet: u8, payload: &[u8]) -> bool {
+    fn was_sent(&self, key: u32, payload: &[u8]) -> bool {
         self.last_sent
             .iter()
-            .any(|(last_packet, last_payload)| *last_packet == packet && last_payload == payload)
+            .any(|(last_key, last_payload)| *last_key == key && last_payload == payload)
     }
 
-    fn remember(&mut self, packet: u8, payload: &[u8]) {
-        self.last_sent.retain(|(last, _)| *last != packet);
-        self.last_sent.push((packet, payload.to_vec()));
+    fn remember(&mut self, key: u32, payload: &[u8]) {
+        self.last_sent.retain(|(last, _)| *last != key);
+        self.last_sent.push((key, payload.to_vec()));
     }
 
     /// Queue the write group that carries `param_id`, honouring auto-apply and
@@ -239,15 +243,21 @@ impl TribeApp {
             return;
         }
         let payload = descriptor::payload_for(&self.values, group);
-        let packet = group.addr.packet();
-        if self.was_sent(packet, &payload) {
+        let key = group.addr.key();
+        if self.was_sent(key, &payload) {
             return;
         }
-        self.remember(packet, &payload);
-        let bytes =
-            descriptor::message_for(self.device, &self.values, self.style, self.device_id, group);
+        self.remember(key, &payload);
+        let bytes = descriptor::message_for(
+            self.device,
+            &self.values,
+            self.style,
+            self.device_id,
+            self.performance_channel(),
+            group,
+        );
         self.queue.push(OutMsg {
-            label: format!("{} ({packet:02X})", param.title),
+            label: format!("{} ({})", param.title, addr_label(group.addr)),
             bytes,
         });
     }
@@ -317,7 +327,7 @@ impl TribeApp {
 
         let rejected = matches!(
             descriptor::ack_code(message.body),
-            Some(code) if code != sysex::op::ACK_OK
+            Some(code) if self.device.reject_codes.contains(&code)
         );
         let label = format!(
             "DID {:02X} · {}",
@@ -381,6 +391,9 @@ impl TribeApp {
                 Evidence::Qsg => {}
                 Evidence::Verified => {
                     ui.label(RichText::new("verified").color(OK).size(11.0));
+                }
+                Evidence::VendorNamed => {
+                    ui.label(RichText::new("vendor-named").color(MUTED).size(11.0));
                 }
                 Evidence::Unsupported => {
                     ui.label(RichText::new("rejected by firmware").color(WARN).size(11.0));
@@ -767,10 +780,9 @@ impl TribeApp {
                                 for param in self.device.params {
                                     let group = self.device.write_group(param.write);
                                     let (packet, payload) = match group {
-                                        Some(group) => (
-                                            format!("{:02X}", group.addr.packet()),
-                                            payload_template(group),
-                                        ),
+                                        Some(group) => {
+                                            (addr_label(group.addr), payload_template(group))
+                                        }
                                         None => ("-".to_string(), "-".to_string()),
                                     };
                                     ui.label(RichText::new(param.title).size(row_height));
@@ -793,6 +805,7 @@ impl TribeApp {
                                     ui.label(RichText::new(index).monospace().size(row_height));
                                     let color = match param.evidence {
                                         Evidence::Verified => OK,
+                                        Evidence::VendorNamed => HEADING,
                                         Evidence::Qsg => MUTED,
                                         Evidence::Unsupported => WARN,
                                     };
@@ -930,6 +943,7 @@ impl TribeApp {
             &self.values,
             self.style,
             self.device_id,
+            self.performance_channel(),
             group,
         ))
     }
@@ -980,6 +994,14 @@ impl eframe::App for TribeApp {
             .show(ui, |ui| self.log_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.tabs(ui));
         self.flush();
+    }
+}
+
+fn addr_label(addr: descriptor::Addr) -> String {
+    match addr {
+        descriptor::Addr::Packet(packet) => format!("{packet:02X}"),
+        descriptor::Addr::PacketSub(packet, sub) => format!("{packet:02X}/{sub:02X}"),
+        descriptor::Addr::Cc(control) => format!("CC{control:02X}"),
     }
 }
 

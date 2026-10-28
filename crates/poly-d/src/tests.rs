@@ -15,8 +15,9 @@ const OBSERVED_BLOCK: [u8; 25] = [
 fn message_for(param: &str, value: u8) -> String {
     let mut values = Values::defaults(DEVICE);
     values.set(param, value);
-    let bytes = descriptor::write_message(DEVICE, &values, WriteStyle::PacketDirect, 0x00, param)
-        .unwrap_or_else(|| panic!("{param} has no message"));
+    let bytes =
+        descriptor::write_message(DEVICE, &values, WriteStyle::PacketDirect, 0x00, 1, param)
+            .unwrap_or_else(|| panic!("{param} has no message"));
     sysex::hex(&bytes)
 }
 
@@ -63,6 +64,7 @@ fn channel_message_matches_qsg_example() {
         &values,
         WriteStyle::PacketDirect,
         0x00,
+        1,
         "channel.tx",
     )
     .unwrap_or_else(|| panic!("channel message"));
@@ -78,6 +80,7 @@ fn long_envelope_is_selectable_but_not_default() {
         &values,
         WriteStyle::LongEnvelope,
         0x00,
+        1,
         "local_keyboard",
     )
     .unwrap_or_else(|| panic!("local keyboard message"));
@@ -182,7 +185,7 @@ fn every_parameter_is_writable_and_read_back() {
 fn write_packets_are_unique_and_7_bit_clean() {
     let values = Values::defaults(DEVICE);
     let mut packets = Vec::new();
-    for (_, bytes) in descriptor::all_messages(DEVICE, &values, WriteStyle::PacketDirect, 0x00) {
+    for (_, bytes) in descriptor::all_messages(DEVICE, &values, WriteStyle::PacketDirect, 0x00, 1) {
         assert_eq!(bytes[0], 0xF0);
         assert_eq!(bytes[bytes.len() - 1], 0xF7);
         assert!(bytes[1..bytes.len() - 1].iter().all(|byte| *byte < 0x80));
@@ -198,7 +201,7 @@ fn write_packets_are_unique_and_7_bit_clean() {
 fn rejected_packets_are_not_written() {
     let values = Values::defaults(DEVICE);
     let written: Vec<u8> =
-        descriptor::all_messages(DEVICE, &values, WriteStyle::PacketDirect, 0x00)
+        descriptor::all_messages(DEVICE, &values, WriteStyle::PacketDirect, 0x00, 1)
             .into_iter()
             .map(|(_, bytes)| bytes[8])
             .collect();

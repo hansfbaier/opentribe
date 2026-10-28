@@ -1,1 +1,4 @@
-ignore = ["crates/poly-d/src/descriptors.rs"]
+ignore = [
+    "crates/poly-d/src/descriptors.rs",
+    "crates/lm-drum/src/descriptors.rs",
+]

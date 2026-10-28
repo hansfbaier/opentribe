@@ -15,6 +15,8 @@ pub enum Evidence {
     Qsg,
     /// Exercised on hardware: written, read back, restored.
     Verified,
+    /// Wire address measured, human name taken from the vendor configuration.
+    VendorNamed,
     /// Present in the vendor config but rejected by the firmware.
     Unsupported,
 }
@@ -24,6 +26,7 @@ impl Evidence {
         match self {
             Evidence::Qsg => "QSG",
             Evidence::Verified => "verified",
+            Evidence::VendorNamed => "vendor-named",
             Evidence::Unsupported => "rejected",
         }
     }
@@ -149,8 +152,10 @@ pub struct Device {
     pub channel_param: Option<&'static str>,
     pub params: &'static [Param],
     pub writes: &'static [WriteGroup],
-    /// Packets the vendor config lists but the firmware rejects.
+    /// Packets that are documented but rejected by the firmware.
     pub rejected: &'static [(&'static str, u8)],
+    /// ACK payload codes that mean "rejected" on this device.
+    pub reject_codes: &'static [u8],
     pub notes: &'static [&'static str],
     pub limits: &'static [&'static str],
 }
@@ -215,6 +220,16 @@ impl Values {
         self.get(id).unwrap_or(fallback)
     }
 
+    /// Device this value set belongs to.
+    pub fn device(&self) -> &'static Device {
+        self.device
+    }
+
+    /// Every parameter with its current value, in descriptor order.
+    pub fn entries(&self) -> impl Iterator<Item = (&'static Param, u8)> + '_ {
+        self.device.params.iter().zip(self.data.iter().copied())
+    }
+
     /// Store a value, clamped to the parameter's kind. Returns `false` when the
     /// id is unknown.
     pub fn set(&mut self, id: &str, value: u8) -> bool {
@@ -245,20 +260,30 @@ pub fn payload_for(values: &Values, group: &WriteGroup) -> Vec<u8> {
 }
 
 /// Build the message for one write group.
+///
+/// SysEx groups use the device envelope; CC groups produce a channel-voice
+/// control-change message on `channel`.
 pub fn message_for(
     device: &Device,
     values: &Values,
     style: WriteStyle,
     device_id: u8,
+    channel: u8,
     group: &WriteGroup,
 ) -> Vec<u8> {
     let payload = payload_for(values, group);
+    if let Addr::Cc(control) = group.addr {
+        let value = payload.first().copied().unwrap_or(0) & 0x7F;
+        let status = 0xB0 | (channel.clamp(1, 16) - 1);
+        return vec![status, control & 0x7F, value];
+    }
+    let packet = group.addr.packet().unwrap_or(0);
     sysex::message(
         device.model,
         device.family,
         style,
         device_id,
-        group.addr.packet(),
+        packet,
         &payload,
     )
 }
@@ -269,11 +294,14 @@ pub fn write_message(
     values: &Values,
     style: WriteStyle,
     device_id: u8,
+    channel: u8,
     param_id: &str,
 ) -> Option<Vec<u8>> {
     let param = device.param(param_id)?;
     let group = device.write_group(param.write)?;
-    Some(message_for(device, values, style, device_id, group))
+    Some(message_for(
+        device, values, style, device_id, channel, group,
+    ))
 }
 
 /// Every write group message, in descriptor order.
@@ -282,6 +310,7 @@ pub fn all_messages(
     values: &Values,
     style: WriteStyle,
     device_id: u8,
+    channel: u8,
 ) -> Vec<(&'static str, Vec<u8>)> {
     device
         .writes
@@ -289,7 +318,7 @@ pub fn all_messages(
         .map(|group| {
             (
                 group.id,
-                message_for(device, values, style, device_id, group),
+                message_for(device, values, style, device_id, channel, group),
             )
         })
         .collect()
@@ -370,10 +399,11 @@ pub fn decode_reply(device: &Device, body: &[u8]) -> Option<String> {
     match first {
         sysex::op::ACK => {
             let code = ack_code(body).unwrap_or(0);
-            return Some(match code {
-                sysex::op::ACK_OK => "ack · accepted".to_string(),
-                sysex::op::ACK_REJECTED => "ack · rejected (code 5)".to_string(),
-                other => format!("ack · code {other}"),
+            let rejected = device.reject_codes.contains(&code);
+            return Some(if rejected {
+                format!("ack · rejected (code {code})")
+            } else {
+                format!("ack · code {code}")
             });
         }
         sysex::op::RETURN_MODE => {
@@ -424,10 +454,10 @@ fn decode_body(device: &Device, body: &[u8]) -> Option<String> {
     let group = device
         .writes
         .iter()
-        .find(|group| group.addr.packet() == packet)?;
+        .find(|group| group.addr.packet() == Some(packet))?;
     let payload = match group.addr {
         Addr::PacketSub(_, _) => payload.get(1..)?,
-        Addr::Packet(_) => payload,
+        _ => payload,
     };
     let mut parts = Vec::new();
     for (index, slot) in group.slots.iter().enumerate() {
@@ -525,6 +555,7 @@ mod tests {
         params: &PARAMS,
         writes: &WRITES,
         rejected: &[],
+        reject_codes: &[0x05],
         notes: &[],
         limits: &[],
     };
@@ -548,6 +579,7 @@ mod tests {
             &values,
             WriteStyle::PacketDirect,
             0x00,
+            1,
             "channel.tx",
         )
         .unwrap_or_else(|| panic!("channel message"));
@@ -588,7 +620,7 @@ mod tests {
 
         assert_eq!(
             decode_reply(&DEVICE, &[sysex::op::ACK, 0x00, 0x00]).as_deref(),
-            Some("ack · accepted")
+            Some("ack · code 0")
         );
         assert_eq!(
             decode_reply(&DEVICE, &[0x25, 0x02]).as_deref(),

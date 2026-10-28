@@ -50,24 +50,46 @@ pub mod op {
     pub const ACK_REJECTED: u8 = 0x05;
 }
 
-/// Where a write lands: a packet number, optionally with a sub-packet byte.
+/// Where a write lands: a SysEx packet (optionally with a sub-packet byte) or a
+/// MIDI control-change number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Addr {
     Packet(u8),
     PacketSub(u8, u8),
+    Cc(u8),
 }
 
 impl Addr {
-    pub fn packet(self) -> u8 {
+    /// Stable key for de-duplicating repeats. SysEx packets carry their
+    /// sub-packet so different sub-indices of one container stay distinct;
+    /// CCs live above that range.
+    pub fn key(self) -> u32 {
         match self {
-            Addr::Packet(packet) | Addr::PacketSub(packet, _) => packet,
+            Addr::Packet(packet) | Addr::PacketSub(packet, _) => {
+                (u32::from(packet) << 8) | u32::from(self.sub().unwrap_or(0))
+            }
+            Addr::Cc(control) => 0x1_0000 + u32::from(control),
+        }
+    }
+
+    pub fn packet(self) -> Option<u8> {
+        match self {
+            Addr::Packet(packet) | Addr::PacketSub(packet, _) => Some(packet),
+            Addr::Cc(_) => None,
         }
     }
 
     pub fn sub(self) -> Option<u8> {
         match self {
-            Addr::Packet(_) => None,
+            Addr::Packet(_) | Addr::Cc(_) => None,
             Addr::PacketSub(_, sub) => Some(sub),
+        }
+    }
+
+    pub fn cc(self) -> Option<u8> {
+        match self {
+            Addr::Cc(control) => Some(control),
+            _ => None,
         }
     }
 }

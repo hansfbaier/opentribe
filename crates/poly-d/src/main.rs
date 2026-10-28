@@ -1,5 +1,5 @@
 //! `opentribe-poly-d` — controller for the Behringer POLY D.
 
 fn main() {
-    tribe_core::run(tribe_poly_d::DEVICE);
+    std::process::exit(tribe_core::cli::main_for(tribe_poly_d::DEVICE));
 }

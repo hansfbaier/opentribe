@@ -1,0 +1,779 @@
+# LM DRUM — descriptor facts.
+#
+# Sources:
+#   1. Behringer LM DRUM user manual p. 24 (note map) and p. 27 (MIDI CCs).
+#   2. Measurements on an LM DRUM running firmware 1.1.7: the 0x75 -> 0x76
+#      settings block, its 108-byte layout, and the SysEx packets that change it.
+#      Transcript: verified/lm-drum-measurements.md.
+#
+# The public documentation has no SysEx packet table for this device, so only
+# facts that were measured are included here. Parameters whose purpose could not
+# be established from the documentation are named neutrally.
+
+[device]
+id = "lm-drum"
+name = "LM DRUM"
+model = [0x00, 0x01, 0x28]
+family = 3
+port_hint = "LM DRUM"
+styles = ["packet-direct"]
+channel_param = "channel.rx"
+reject_codes = []
+
+[device.read]
+opcode = 0x75
+reply = 0x76
+block_len = 108
+
+notes = [
+    "Measured on firmware 1.1.7: 0x75 -> 0x76 with a 108-byte block. Block offsets were mapped one packet at a time by writing, reading and restoring.",
+    "ACK codes are per packet: silence means unknown packet or sub-index, 01 00 00 means applied, and 01 00 01 is both a rejection and the answer to every applied 0x0E write.",
+    "Two-field frame: 28 <a> <b> writes block offsets 9 and 10 in one message; it is not a sub-index container.",
+    "2C <sub> <value> writes block offsets 32-34; the value is a 0-based voice index in the manual voice order.",
+    "74 <sub> <value> addresses single switches: sub 09 -> offset 35, 0B -> offset 2, 0C -> offset 31.",
+    "76 is not accepted as a bulk write: 76 <108 bytes> produced no ACK and no block change.",
+    "Note-map slots (packet 29) are 16 bytes at offsets 14-29; the voice behind each slot is not published, so slots are named by position.",
+    "Parameters tagged vendor-named have a measured wire address and a name taken from the vendor configuration; their meaning is not behaviourally confirmed.",
+]
+
+limits = [
+    "The public manual has no SysEx packet table: only measured packets and the documented CCs are exposed.",
+    "Sequencer patterns, samples and the 0x74 sub-settings beyond 09/0B/0C still need investigation.",
+    "CC writes have no read-back: the sliders show what was sent, not what the instrument stored.",
+    "Behavioural effects of end mode, MIDI through and the trigger-output indices are untested.",
+]
+
+rejected = []
+
+# ---------------------------------------------------------------- label sets
+
+[[labels]]
+name = "clock_source"
+values = ["Internal", "MIDI DIN", "MIDI USB", "TRIG"]
+
+[[labels]]
+name = "voice"
+values = [
+    "Bass drum",
+    "Snare",
+    "Sidestick",
+    "Closed hi-hat",
+    "Open hi-hat",
+    "Hi tom",
+    "Mid tom",
+    "Low tom",
+    "Ride",
+    "Crash",
+    "Cabasa",
+    "Tambourine",
+    "High conga",
+    "Low conga",
+    "Cowbell",
+    "Claps",
+]
+
+# -------------------------------------------------------------- write groups
+
+[[write]]
+id = "channel"
+packet = 0x0E
+sub = 0x01
+slots = [{ param = "channel.tx" }, { param = "channel.rx" }]
+
+[[write]]
+id = "note_map"
+packet = 0x29
+slots = [
+    { param = "note.slot01" },
+    { param = "note.slot02" },
+    { param = "note.slot03" },
+    { param = "note.slot04" },
+    { param = "note.slot05" },
+    { param = "note.slot06" },
+    { param = "note.slot07" },
+    { param = "note.slot08" },
+    { param = "note.slot09" },
+    { param = "note.slot10" },
+    { param = "note.slot11" },
+    { param = "note.slot12" },
+    { param = "note.slot13" },
+    { param = "note.slot14" },
+    { param = "note.slot15" },
+    { param = "note.slot16" },
+]
+
+[[write]]
+id = "midi_through"
+packet = 0x28
+slots = [{ param = "midi.m2u" }, { param = "midi.mst" }]
+
+[[write]]
+id = "clock_source"
+packet = 0x1B
+slots = [{ param = "clock.source" }]
+
+[[write]]
+id = "end_mode"
+packet = 0x2A
+slots = [{ param = "end_mode" }]
+
+[[write]]
+id = "trigger.main"
+packet = 0x2C
+sub = 0x00
+slots = [{ param = "trigger.main" }]
+
+[[write]]
+id = "trigger.ex"
+packet = 0x2C
+sub = 0x01
+slots = [{ param = "trigger.ex" }]
+
+[[write]]
+id = "trigger.exex"
+packet = 0x2C
+sub = 0x02
+slots = [{ param = "trigger.exex" }]
+
+[[write]]
+id = "sw.autosave"
+packet = 0x74
+sub = 0x0B
+slots = [{ param = "autosave" }]
+
+[[write]]
+id = "sw.beep"
+packet = 0x74
+sub = 0x0C
+slots = [{ param = "beep" }]
+
+[[write]]
+id = "sw.random_hat"
+packet = 0x74
+sub = 0x09
+slots = [{ param = "random_hat" }]
+
+[[write]]
+id = "accent"
+packet = 0x1C
+slots = [{ param = "accent_threshold" }]
+
+[[write]]
+id = "cc.filter"
+cc = 74
+slots = [{ param = "filter.cutoff" }]
+
+[[write]]
+id = "cc.bass"
+cc = 75
+slots = [{ param = "tuning.bass_drum" }]
+
+[[write]]
+id = "cc.snare"
+cc = 76
+slots = [{ param = "tuning.snare_drum" }]
+
+[[write]]
+id = "cc.sidestick"
+cc = 77
+slots = [{ param = "tuning.sidestick" }]
+
+[[write]]
+id = "cc.closed_hat"
+cc = 78
+slots = [{ param = "tuning.closed_hat" }]
+
+[[write]]
+id = "cc.open_hat"
+cc = 79
+slots = [{ param = "tuning.open_hat" }]
+
+[[write]]
+id = "cc.high_tom"
+cc = 80
+slots = [{ param = "tuning.high_tom" }]
+
+[[write]]
+id = "cc.mid_tom"
+cc = 81
+slots = [{ param = "tuning.mid_tom" }]
+
+[[write]]
+id = "cc.low_tom"
+cc = 82
+slots = [{ param = "tuning.low_tom" }]
+
+[[write]]
+id = "cc.ride"
+cc = 83
+slots = [{ param = "tuning.ride" }]
+
+[[write]]
+id = "cc.crash"
+cc = 84
+slots = [{ param = "tuning.crash" }]
+
+[[write]]
+id = "cc.cabasa"
+cc = 85
+slots = [{ param = "tuning.cabasa" }]
+
+[[write]]
+id = "cc.tambourine"
+cc = 86
+slots = [{ param = "tuning.tambourine" }]
+
+[[write]]
+id = "cc.high_conga"
+cc = 87
+slots = [{ param = "tuning.high_conga" }]
+
+[[write]]
+id = "cc.low_conga"
+cc = 88
+slots = [{ param = "tuning.low_conga" }]
+
+[[write]]
+id = "cc.cowbell"
+cc = 89
+slots = [{ param = "tuning.cowbell" }]
+
+[[write]]
+id = "cc.claps"
+cc = 90
+slots = [{ param = "tuning.claps" }]
+
+[[param]]
+id = "filter.cutoff"
+title = "Filter cutoff"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Filter"
+write = "cc.filter"
+default = 64
+evidence = "qsg"
+hint = "CC 74, manual p. 27"
+
+[[param]]
+id = "tuning.bass_drum"
+title = "Bass drum tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.bass"
+default = 64
+evidence = "qsg"
+hint = "CC 75"
+
+[[param]]
+id = "tuning.snare_drum"
+title = "Snare drum tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.snare"
+default = 64
+evidence = "qsg"
+hint = "CC 76"
+
+[[param]]
+id = "tuning.sidestick"
+title = "Sidestick tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.sidestick"
+default = 64
+evidence = "qsg"
+hint = "CC 77"
+
+[[param]]
+id = "tuning.closed_hat"
+title = "Closed hi-hat tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.closed_hat"
+default = 64
+evidence = "qsg"
+hint = "CC 78"
+
+[[param]]
+id = "tuning.open_hat"
+title = "Open hi-hat tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.open_hat"
+default = 64
+evidence = "qsg"
+hint = "CC 79"
+
+[[param]]
+id = "tuning.high_tom"
+title = "High tom tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.high_tom"
+default = 64
+evidence = "qsg"
+hint = "CC 80"
+
+[[param]]
+id = "tuning.mid_tom"
+title = "Mid tom tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.mid_tom"
+default = 64
+evidence = "qsg"
+hint = "CC 81"
+
+[[param]]
+id = "tuning.low_tom"
+title = "Low tom tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.low_tom"
+default = 64
+evidence = "qsg"
+hint = "CC 82"
+
+[[param]]
+id = "tuning.ride"
+title = "Ride cymbal tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.ride"
+default = 64
+evidence = "qsg"
+hint = "CC 83"
+
+[[param]]
+id = "tuning.crash"
+title = "Crash cymbal tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.crash"
+default = 64
+evidence = "qsg"
+hint = "CC 84"
+
+[[param]]
+id = "tuning.cabasa"
+title = "Cabasa tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.cabasa"
+default = 64
+evidence = "qsg"
+hint = "CC 85"
+
+[[param]]
+id = "tuning.tambourine"
+title = "Tambourine tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.tambourine"
+default = 64
+evidence = "qsg"
+hint = "CC 86"
+
+[[param]]
+id = "tuning.high_conga"
+title = "High conga tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.high_conga"
+default = 64
+evidence = "qsg"
+hint = "CC 87"
+
+[[param]]
+id = "tuning.low_conga"
+title = "Low conga tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.low_conga"
+default = 64
+evidence = "qsg"
+hint = "CC 88"
+
+[[param]]
+id = "tuning.cowbell"
+title = "Cowbell tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.cowbell"
+default = 64
+evidence = "qsg"
+hint = "CC 89"
+
+[[param]]
+id = "tuning.claps"
+title = "Claps tuning"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Voice tuning"
+write = "cc.claps"
+default = 64
+evidence = "qsg"
+hint = "CC 90"
+
+[[param]]
+id = "note.slot01"
+title = "Note slot 1"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 36
+read_index = 14
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot02"
+title = "Note slot 2"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 40
+read_index = 15
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot03"
+title = "Note slot 3"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 41
+read_index = 16
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot04"
+title = "Note slot 4"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 38
+read_index = 17
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot05"
+title = "Note slot 5"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 39
+read_index = 18
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot06"
+title = "Note slot 6"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 50
+read_index = 19
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot07"
+title = "Note slot 7"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 46
+read_index = 20
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot08"
+title = "Note slot 8"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 47
+read_index = 21
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot09"
+title = "Note slot 9"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 51
+read_index = 22
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot10"
+title = "Note slot 10"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 49
+read_index = 23
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot11"
+title = "Note slot 11"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 42
+read_index = 24
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot12"
+title = "Note slot 12"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 43
+read_index = 25
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot13"
+title = "Note slot 13"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 44
+read_index = 26
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot14"
+title = "Note slot 14"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 45
+read_index = 27
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot15"
+title = "Note slot 15"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 48
+read_index = 28
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "note.slot16"
+title = "Note slot 16"
+kind = { byte = [0, 127] }
+tab = "Note map"
+section = "Packet 0x29, block offsets 14-29"
+write = "note_map"
+default = 37
+read_index = 29
+evidence = "verified"
+hint = "MIDI note; voice behind this slot not published"
+
+[[param]]
+id = "channel.tx"
+title = "MIDI channel TX"
+kind = { byte = [0, 16] }
+tab = "Routing"
+section = "MIDI channel (packet 0x0E, sub 0x01)"
+write = "channel"
+default = 0
+read_index = 8
+evidence = "verified"
+hint = "block offset 8; unit read 0"
+
+[[param]]
+id = "channel.rx"
+title = "MIDI channel RX"
+kind = { byte = [0, 16] }
+tab = "Routing"
+section = "MIDI channel (packet 0x0E, sub 0x01)"
+write = "channel"
+default = 16
+read_index = 7
+evidence = "verified"
+hint = "block offset 7; notes and CCs are sent on this channel"
+
+[[param]]
+id = "midi.m2u"
+title = "MIDI through: MIDI to USB"
+kind = { bool = true }
+tab = "Routing"
+section = "MIDI through (packet 0x28)"
+write = "midi_through"
+default = 0
+read_index = 9
+evidence = "vendor-named"
+hint = "offset 9; frame 28 <a> <b> writes offsets 9 and 10 together"
+
+[[param]]
+id = "midi.mst"
+title = "MIDI through: soft through"
+kind = { bool = true }
+tab = "Routing"
+section = "MIDI through (packet 0x28)"
+write = "midi_through"
+default = 0
+read_index = 10
+evidence = "vendor-named"
+hint = "offset 10; written together with offset 9"
+
+[[param]]
+id = "clock.source"
+title = "Clock source"
+kind = { enum = "clock_source" }
+tab = "Routing"
+section = "Clock (packet 0x1B)"
+write = "clock_source"
+default = 0
+read_index = 5
+evidence = "vendor-named"
+hint = "offset 5; values 0-2 tested, 3 untested"
+
+[[param]]
+id = "end_mode"
+title = "End mode"
+kind = { byte = [0, 2] }
+tab = "Routing"
+section = "End mode (packet 0x2A)"
+write = "end_mode"
+default = 2
+read_index = 30
+evidence = "vendor-named"
+hint = "offset 30; 0-2 accepted, 3 rejected; effect untested"
+
+[[param]]
+id = "trigger.main"
+title = "Trigger out main"
+kind = { enum = "voice" }
+tab = "Routing"
+section = "Trigger outputs (packet 0x2C)"
+write = "trigger.main"
+default = 10
+read_index = 32
+evidence = "vendor-named"
+hint = "offset 32; 0-based voice index (10 = Cabasa)"
+
+[[param]]
+id = "trigger.ex"
+title = "Trigger out secondary"
+kind = { enum = "voice" }
+tab = "Routing"
+section = "Trigger outputs (packet 0x2C)"
+write = "trigger.ex"
+default = 11
+read_index = 33
+evidence = "vendor-named"
+hint = "offset 33; 0-based voice index (11 = Tambourine)"
+
+[[param]]
+id = "trigger.exex"
+title = "Trigger out tertiary"
+kind = { enum = "voice" }
+tab = "Routing"
+section = "Trigger outputs (packet 0x2C)"
+write = "trigger.exex"
+default = 14
+read_index = 34
+evidence = "vendor-named"
+hint = "offset 34; 0-based voice index (14 = Cowbell)"
+
+[[param]]
+id = "autosave"
+title = "Auto save"
+kind = { bool = true }
+tab = "Routing"
+section = "Switches (packet 0x74)"
+write = "sw.autosave"
+default = 1
+read_index = 2
+evidence = "vendor-named"
+hint = "offset 2; frame 74 0B <value>"
+
+[[param]]
+id = "beep"
+title = "Beep on"
+kind = { bool = true }
+tab = "Routing"
+section = "Switches (packet 0x74)"
+write = "sw.beep"
+default = 0
+read_index = 31
+evidence = "vendor-named"
+hint = "offset 31; frame 74 0C <value>"
+
+[[param]]
+id = "random_hat"
+title = "Random closed hat"
+kind = { bool = true }
+tab = "Routing"
+section = "Switches (packet 0x74)"
+write = "sw.random_hat"
+default = 0
+read_index = 35
+evidence = "vendor-named"
+hint = "offset 35; frame 74 09 <value>"
+
+[[param]]
+id = "accent_threshold"
+title = "Accent velocity threshold"
+kind = { byte = [0, 127] }
+tab = "Voices & filter"
+section = "Dynamics"
+write = "accent"
+default = 109
+read_index = 36
+evidence = "vendor-named"
+hint = "offset 36 via 1C <value>; behavioural effect untested"

@@ -1,0 +1,17 @@
+[package]
+name = "tribe-lm-drum"
+description = "Behringer LM DRUM descriptor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "tribe_lm_drum"
+path = "src/lib.rs"
+
+[[bin]]
+name = "opentribe-lm-drum"
+path = "src/main.rs"
+
+[dependencies]
+tribe-core = { path = "../core" }

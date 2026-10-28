@@ -5,6 +5,7 @@
 //! MIDI I/O, the egui UI, the message log and the raw SysEx console.
 
 pub mod app;
+pub mod cli;
 pub mod descriptor;
 pub mod log;
 pub mod midi;

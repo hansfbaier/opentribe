@@ -2339,6 +2339,14 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "midir",
+ "serde_json",
+]
+
+[[package]]
+name = "tribe-lm-drum"
+version = "0.1.0"
+dependencies = [
+ "tribe-core",
 ]
 
 [[package]]

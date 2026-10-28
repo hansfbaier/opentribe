@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/poly-d", "xtask"]
+members = ["crates/core", "crates/poly-d", "crates/lm-drum", "xtask"]
 resolver = "3"
 
 [workspace.package]

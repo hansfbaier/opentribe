@@ -20,6 +20,8 @@ styles = ["packet-direct", "long-envelope"]
 channel_param = "channel.tx"
 restore = 0x7D
 
+reject_codes = [0x05]
+
 [device.read]
 opcode = 0x75
 reply = 0x76

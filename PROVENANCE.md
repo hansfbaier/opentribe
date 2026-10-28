@@ -8,22 +8,30 @@ data files or assets are included, copied, linked or read at build time.
 
 | Fact class | Source | Evidence |
 | --- | --- | --- |
-| SysEx framing, packet numbers, payload shapes, ranges, defaults | Behringer POLY D Quick Start Guide, "POLY D System Exclusive Data Sheet", p. 82-85 | `QSG` |
-| ACK codes, settings read (`0x75` → `0x76`) and the 25-byte block layout, packets absent from the QSG (`0x1C`, `0x2F`), packets the firmware rejects, framing acceptance | Measurements taken by this project on a POLY D running firmware 1.1.3 | `verified` |
-| Envelope rules for protocol families, opcodes for mode/firmware/restore | Same measurements plus the standard MIDI System Exclusive specification | `verified` / `QSG` |
+| POLY D SysEx framing, packet numbers, payload shapes, ranges, defaults | Behringer POLY D Quick Start Guide, "POLY D System Exclusive Data Sheet", p. 82-85 | `QSG` |
+| POLY D ACK codes, settings read (`0x75` → `0x76`) and the 25-byte block layout, packets absent from the QSG (`0x1C`, `0x2F`), rejected packets, framing acceptance | Measurements on a POLY D running firmware 1.1.3 | `verified` |
+| LM DRUM CC map (filter cutoff, 16 voice tunings) | Behringer LM DRUM user manual p. 27 | `QSG` |
+| LM DRUM settings read, 108-byte block layout, note map, channel, routing/switch frames, trigger-output value domain, packet-to-offset mapping | Measurements on an LM DRUM running firmware 1.1.7; trigger-output voice order cross-checked against manual p. 24 defaults | `verified` / `vendor-named` |
+| Envelope rules for protocol families, opcodes for mode/firmware/restore | Same measurements plus the MIDI System Exclusive specification | `verified` |
 
-Full transcript: [`verified/poly-d-measurements.md`](verified/poly-d-measurements.md).
-Machine-readable device facts: [`verified/poly-d.toml`](verified/poly-d.toml).
+Transcripts: [`verified/poly-d-measurements.md`](verified/poly-d-measurements.md),
+[`verified/lm-drum-measurements.md`](verified/lm-drum-measurements.md).
+Machine-readable device facts: [`verified/poly-d.toml`](verified/poly-d.toml),
+[`verified/lm-drum.toml`](verified/lm-drum.toml).
 
 ## What is not used
 
 - No SynthTribe/`Synthtool` binary, resource, `config.json`, SQLite database or image is
   shipped, parsed, embedded or downloaded by this repository.
-- `cargo run -p xtask` reads exactly one input, `verified/poly-d.toml`. Earlier drafts used
-  the vendor configuration file to seed parameter titles and read-back offsets; that
+- `cargo run -p xtask` reads only the hand-written overlays under `verified/`. Earlier drafts
+  used the vendor configuration file to seed parameter titles and read-back offsets; that
   dependency was removed. Every read-back offset has since been measured independently
-  (write a distinct value, read the block, diff), and parameter names are either the QSG's
-  own wording or neutral functional names.
+  (write a distinct value, read the block, diff), and parameter names are either the
+  documentation's own wording or neutral functional names. For the LM DRUM, which has no
+  published SysEx packet table, only measured packets and documented CCs are exposed. Its
+  remaining settings carry the `vendor-named` tag: the wire address and value domain are
+  measured, while the human name comes from the vendor configuration. Names never upgrade a
+  packet to "verified" on their own.
 - UI text, colours, icons and layout are original. The screenshot in `docs/` is this
   application.
 - No code was decompiled, disassembled or transcribed. The protocol is exercised over

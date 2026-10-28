@@ -78,6 +78,7 @@ pub static DEVICE: &Device = &Device {
     params: &PARAMS,
     writes: &WRITES,
     rejected: &[],
+    reject_codes: &[0x05],
     notes: &[],
     limits: &[],
 };
