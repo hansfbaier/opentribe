@@ -76,8 +76,9 @@ outputs use the manual's voice order (verified against the unit's baseline `0A 0
 Cabasa/Tambourine/Cowbell).
 
 Still open: the USB channel fields at offsets 11/12, clock polarity, the flags at offsets
-55/72/73, the voice channel map writer, note-slot to voice order, persistence of a changed value,
-and the sequencer/sample paths. See the research handoff in the RE notebook.
+55/72/73, the voice channel map writer (56-71), note-slot to voice order, and the sequencer/sample
+paths. Settings persist across power-off; no save command is needed. See the research handoff in
+the RE notebook.
 
 ## POLY D findings (firmware 1.1.3)
 

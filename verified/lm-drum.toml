@@ -36,12 +36,14 @@ notes = [
     "74 <sub> <value> addresses single switches: sub 09 -> offset 35, 0B -> offset 2, 0C -> offset 31.",
     "76 is not accepted as a bulk write: 76 <108 bytes> produced no ACK and no block change.",
     "Note-map slots (packet 29) are 16 bytes at offsets 14-29; the voice behind each slot is not published, so slots are named by position.",
+    "Settings persist across a power cycle: accent threshold written 109 -> 100 survived a power-cycle; no commit command is needed.",
     "Parameters tagged vendor-named have a measured wire address and a name taken from the vendor configuration; their meaning is not behaviourally confirmed.",
 ]
 
 limits = [
     "The public manual has no SysEx packet table: only measured packets and the documented CCs are exposed.",
-    "Sequencer patterns, samples and the 0x74 sub-settings beyond 09/0B/0C still need investigation.",
+    "No write frame is known for the USB in/out channel fields (offsets 11/12), clock polarity, the flags at 55/72/73, or the voice-channel map at 56-71.",
+    "Sequencer patterns, samples and DFU need their own investigation.",
     "CC writes have no read-back: the sliders show what was sent, not what the instrument stored.",
     "Behavioural effects of end mode, MIDI through and the trigger-output indices are untested.",
 ]
