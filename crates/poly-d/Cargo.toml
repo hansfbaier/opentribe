@@ -1,0 +1,17 @@
+[package]
+name = "tribe-poly-d"
+description = "Behringer POLY D global parameter descriptor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "tribe_poly_d"
+path = "src/lib.rs"
+
+[[bin]]
+name = "opentribe-poly-d"
+path = "src/main.rs"
+
+[dependencies]
+tribe-core = { path = "../core" }

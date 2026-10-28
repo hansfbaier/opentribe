@@ -60,18 +60,19 @@ pub fn input_ports() -> Result<Vec<String>, String> {
         .collect())
 }
 
-/// Pick the most likely POLY D port: names such as `POLY D`, `POLY D MIDI 1`,
-/// `PolyD` all normalise to `polyd`.
-pub fn guess_poly_d_port(names: &[String]) -> Option<String> {
+/// Pick the most likely port for a device: `hint` is the descriptor's port
+/// substring, so `POLY D`, `POLY D MIDI 1` and `PolyD` all normalise to `polyd`.
+pub fn guess_port(names: &[String], hint: &str) -> Option<String> {
     let normalise = |name: &str| -> String {
         name.chars()
             .filter(|c| c.is_ascii_alphanumeric())
             .flat_map(|c| c.to_lowercase())
             .collect()
     };
+    let needle = normalise(hint);
     names
         .iter()
-        .find(|name| normalise(name).contains("polyd"))
+        .find(|name| normalise(name).contains(&needle))
         .cloned()
 }
 
@@ -229,15 +230,20 @@ mod tests {
     }
 
     #[test]
-    fn poly_d_port_guessing() {
+    fn port_guessing_uses_the_hint() {
         let names = vec![
             "Midi Through:Midi Through Port-0 14:0".to_string(),
             "POLY D:POLY D MIDI 1 20:0".to_string(),
+            "LM DRUM:LM DRUM MIDI 1 21:0".to_string(),
         ];
         assert_eq!(
-            guess_poly_d_port(&names).as_deref(),
+            guess_port(&names, "POLY D").as_deref(),
             Some("POLY D:POLY D MIDI 1 20:0")
         );
-        assert!(guess_poly_d_port(&names[..1]).is_none());
+        assert_eq!(
+            guess_port(&names, "LM DRUM").as_deref(),
+            Some("LM DRUM:LM DRUM MIDI 1 21:0")
+        );
+        assert!(guess_port(&names[..1], "POLY D").is_none());
     }
 }

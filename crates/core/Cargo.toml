@@ -1,0 +1,10 @@
+[package]
+name = "tribe-core"
+description = "Shared SysEx/MIDI/UI core for opentribe device controllers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+eframe.workspace = true
+midir.workspace = true

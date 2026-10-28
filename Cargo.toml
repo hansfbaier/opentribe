@@ -1,12 +1,13 @@
-[package]
-name = "open-poly-d"
+[workspace]
+members = ["crates/core", "crates/poly-d", "xtask"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-description = "egui controller for the Behringer POLY D (global SysEx settings)"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/example/open-poly-d"
 
-[dependencies]
+[workspace.dependencies]
 eframe = { version = "0.37", default-features = false, features = [
     "glow",
     "default_fonts",

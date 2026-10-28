@@ -1,0 +1,477 @@
+# POLY D — device facts for the descriptor.
+#
+# Sources, in order of authority:
+#   1. Behringer POLY D Quick Start Guide, "POLY D System Exclusive Data Sheet"
+#      (p. 82-85): framing, packet numbers, payload shapes, ranges, defaults.
+#   2. Measurements on a POLY D running firmware 1.1.3: ACK codes, the 0x75 ->
+#      0x76 settings block, its 25-byte layout, and the packets the QSG omits.
+#      The transcript is in verified/poly-d-measurements.md.
+#
+# No vendor software, data file or binary was consulted while writing this file.
+# `cargo run -p xtask` validates it and writes crates/poly-d/src/descriptors.rs.
+
+[device]
+id = "poly-d"
+name = "POLY D"
+model = [0x00, 0x01, 0x0C]
+family = 3
+port_hint = "POLY D"
+styles = ["packet-direct", "long-envelope"]
+channel_param = "channel.tx"
+restore = 0x7D
+
+[device.read]
+opcode = 0x75
+reply = 0x76
+block_len = 25
+
+notes = [
+    "Framing: the QSG form F0 00 20 32 00 01 0C 00 <packet> <payload> F7 is accepted. The SynthTribe 0x78 long envelope is rejected with ACK code 5, so it stays an experiment only.",
+    "Every write is answered: 01 00 00 = accepted, 01 00 05 = rejected (unknown packet, out-of-range value, wrong framing).",
+    "Read-back: 0x75 returns 0x76 plus a 25-byte block. Every offset was measured by writing a distinct value and diffing the next read (see verified/poly-d-measurements.md).",
+    "Local keyboard mode (0x2F) and accent threshold (0x1C) are exercised on hardware; both are absent from the QSG",
+    "The 0x77 reads SynthTribe uses are rejected as well; 0x75 is the working read.",
+]
+
+limits = [
+    "There is no MIDI CC parameter map for the POLY D; the published control surface is SysEx only.",
+    "Sequencer and arpeggiator pattern editing are out of scope; only their MIDI output routing is exposed.",
+    "Block offsets 0, 5 and 6 are not exposed: 0 read as zero on 1.1.3 and 5/6 mirror the velocity constants.",
+]
+
+rejected = [
+    { name = "Sequencer auto-sync", packet = 0x1D },
+    { name = "Assign value", packet = 0x1F },
+]
+
+# ---------------------------------------------------------------- label sets
+
+[[labels]]
+name = "route"
+values = ["Off", "DIN", "USB", "Both"]
+
+[[labels]]
+name = "key_priority"
+values = ["Low", "High", "Last"]
+
+[[labels]]
+name = "clock_source"
+values = ["Internal", "MIDI DIN", "MIDI USB", "TRIG"]
+
+[[labels]]
+name = "clock_rate"
+values = ["1 PPS", "2 PPQ", "24 PPQ", "48 PPQ"]
+
+[[labels]]
+name = "clock_polarity"
+values = ["Falling", "Rising"]
+
+[[labels]]
+name = "mod_curve"
+values = ["Soft", "Medium", "Hard"]
+
+[[labels]]
+name = "velocity_curve"
+values = ["Curve 0", "Curve 1", "Curve 2"]
+
+# -------------------------------------------------------------- write groups
+
+[[write]]
+id = "channel"
+packet = 0x0E
+sub = 0x01
+slots = [{ param = "channel.tx" }, { param = "channel.rx" }]
+
+[[write]]
+id = "transpose"
+packet = 0x0F
+slots = [{ param = "transpose" }]
+
+[[write]]
+id = "velocity"
+packet = 0x10
+slots = [
+    { param = "velocity.on" },
+    { param = "velocity.off" },
+    { param = "velocity.curve" },
+]
+
+[[write]]
+id = "pitch_bend"
+packet = 0x11
+slots = [{ param = "pitch_bend" }, { lit = 0x00 }]
+
+[[write]]
+id = "key_priority"
+packet = 0x12
+slots = [{ param = "key_priority" }]
+
+[[write]]
+id = "multi_trigger"
+packet = 0x14
+slots = [{ param = "multi_trigger" }, { lit = 0x00 }]
+
+[[write]]
+id = "mod_curve"
+packet = 0x15
+slots = [{ param = "mod_curve" }]
+
+[[write]]
+id = "note_zero_cv"
+packet = 0x16
+slots = [{ param = "note_zero_cv" }]
+
+[[write]]
+id = "clock_out"
+packet = 0x17
+slots = [{ param = "clock_out" }]
+
+[[write]]
+id = "clock_polarity"
+packet = 0x19
+slots = [{ param = "clock_polarity" }]
+
+[[write]]
+id = "clock_rate"
+packet = 0x1A
+slots = [{ param = "clock_rate" }]
+
+[[write]]
+id = "clock_source"
+packet = 0x1B
+slots = [{ param = "clock_source" }]
+
+[[write]]
+id = "accent_threshold"
+packet = 0x1C
+slots = [{ param = "accent_threshold" }]
+
+[[write]]
+id = "mod_wheel_range"
+packet = 0x20
+slots = [{ param = "mod_wheel_range" }]
+
+[[write]]
+id = "out.mod_wheel"
+packet = 0x21
+slots = [{ param = "out.mod_wheel" }]
+
+[[write]]
+id = "out.pitch_wheel"
+packet = 0x22
+slots = [{ param = "out.pitch_wheel" }]
+
+[[write]]
+id = "out.keyboard"
+packet = 0x23
+slots = [{ param = "out.keyboard" }]
+
+[[write]]
+id = "out.aftertouch"
+packet = 0x24
+slots = [{ param = "out.aftertouch" }]
+
+[[write]]
+id = "out.sequencer"
+packet = 0x25
+slots = [{ param = "out.sequencer" }]
+
+[[write]]
+id = "out.arp"
+packet = 0x26
+slots = [{ param = "out.arp" }]
+
+[[write]]
+id = "local_keyboard"
+packet = 0x2F
+slots = [{ param = "local_keyboard" }]
+
+# ------------------------------------------------------------------ params
+
+[[param]]
+id = "channel.tx"
+title = "MIDI channel TX"
+kind = { byte = [0, 16] }
+tab = "Global"
+section = "Channel & keyboard"
+write = "channel"
+default = 1
+read_index = 2
+evidence = "qsg"
+hint = "0 = any channel (QSG range 0-16)"
+
+[[param]]
+id = "channel.rx"
+title = "MIDI channel RX"
+kind = { byte = [0, 16] }
+tab = "Global"
+section = "Channel & keyboard"
+write = "channel"
+default = 1
+read_index = 1
+evidence = "qsg"
+hint = "0 = All (any channel)"
+
+[[param]]
+id = "transpose"
+title = "MIDI IN transpose"
+kind = { byte = [0, 24] }
+tab = "Global"
+section = "Channel & keyboard"
+write = "transpose"
+default = 12
+read_index = 3
+evidence = "qsg"
+hint = "wire value: 12 = none, 0 = -12, 24 = +12"
+
+[[param]]
+id = "pitch_bend"
+title = "Pitch bend range"
+kind = { byte = [0, 24] }
+tab = "Global"
+section = "Channel & keyboard"
+write = "pitch_bend"
+default = 12
+read_index = 9
+evidence = "qsg"
+hint = "semitones (0-24)"
+
+[[param]]
+id = "key_priority"
+title = "Key priority"
+kind = { enum = "key_priority" }
+tab = "Global"
+section = "Channel & keyboard"
+write = "key_priority"
+default = 0
+read_index = 7
+evidence = "qsg"
+hint = "note-stealing order"
+
+[[param]]
+id = "multi_trigger"
+title = "Multi-trigger"
+kind = { bool = true }
+tab = "Global"
+section = "Channel & keyboard"
+write = "multi_trigger"
+default = 1
+read_index = 8
+evidence = "qsg"
+hint = "retrigger envelopes for every new note"
+
+[[param]]
+id = "local_keyboard"
+title = "Local keyboard mode"
+kind = { bool = true }
+tab = "Global"
+section = "Channel & keyboard"
+write = "local_keyboard"
+default = 0
+read_index = 15
+evidence = "verified"
+hint = "packet 0x2F, written and read back on firmware 1.1.3"
+
+[[param]]
+id = "velocity.on"
+title = "Note-on velocity"
+kind = { byte = [0, 127] }
+tab = "Global"
+section = "Velocity"
+write = "velocity"
+default = 0
+read_index = 4
+evidence = "qsg"
+hint = "0 = take velocity from the key"
+
+[[param]]
+id = "velocity.off"
+title = "Note-off velocity"
+kind = { byte = [0, 127] }
+tab = "Global"
+section = "Velocity"
+write = "velocity"
+default = 0
+read_index = 5
+evidence = "qsg"
+hint = "0 = dynamic"
+
+[[param]]
+id = "velocity.curve"
+title = "Velocity curve"
+kind = { enum = "velocity_curve" }
+tab = "Global"
+section = "Velocity"
+write = "velocity"
+default = 0
+read_index = 6
+evidence = "qsg"
+hint = "curve number 0-2"
+
+[[param]]
+id = "mod_curve"
+title = "Modulation curve"
+kind = { enum = "mod_curve" }
+tab = "Global"
+section = "Modulation & CV"
+write = "mod_curve"
+default = 0
+read_index = 11
+evidence = "qsg"
+hint = "wheel response"
+
+[[param]]
+id = "mod_wheel_range"
+title = "Modulation wheel range"
+kind = { byte = [0, 4] }
+tab = "Global"
+section = "Modulation & CV"
+write = "mod_wheel_range"
+default = 2
+read_index = 10
+evidence = "qsg"
+hint = "QSG: 2 = 100 %"
+
+[[param]]
+id = "note_zero_cv"
+title = "Note at zero CV"
+kind = { byte = [0, 127] }
+tab = "Global"
+section = "Modulation & CV"
+write = "note_zero_cv"
+default = 36
+read_index = 12
+evidence = "qsg"
+hint = "MIDI note that produces 0 V (36 = C2)"
+
+[[param]]
+id = "accent_threshold"
+title = "Accent velocity threshold"
+kind = { byte = [0, 127] }
+tab = "Global"
+section = "Modulation & CV"
+write = "accent_threshold"
+default = 96
+read_index = 17
+evidence = "verified"
+hint = "packet 0x1C, absent from the QSG"
+
+[[param]]
+id = "clock_source"
+title = "Clock source"
+kind = { enum = "clock_source" }
+tab = "Clock & routing"
+section = "Clock"
+write = "clock_source"
+default = 0
+read_index = 14
+evidence = "qsg"
+hint = "packet 0x1B"
+
+[[param]]
+id = "clock_rate"
+title = "Clock rate"
+kind = { enum = "clock_rate" }
+tab = "Clock & routing"
+section = "Clock"
+write = "clock_rate"
+default = 2
+read_index = 13
+evidence = "qsg"
+hint = "packet 0x1A"
+
+[[param]]
+id = "clock_polarity"
+title = "External clock polarity"
+kind = { enum = "clock_polarity" }
+tab = "Clock & routing"
+section = "Clock"
+write = "clock_polarity"
+default = 1
+read_index = 16
+evidence = "qsg"
+hint = "packet 0x19"
+
+[[param]]
+id = "clock_out"
+title = "MIDI clock out"
+kind = { enum = "route" }
+tab = "Clock & routing"
+section = "Clock"
+write = "clock_out"
+default = 3
+read_index = 18
+evidence = "qsg"
+hint = "packet 0x17"
+
+[[param]]
+id = "out.mod_wheel"
+title = "Mod wheel output"
+kind = { enum = "route" }
+tab = "Clock & routing"
+section = "MIDI output routing"
+write = "out.mod_wheel"
+default = 3
+read_index = 20
+evidence = "qsg"
+hint = "0x21"
+
+[[param]]
+id = "out.pitch_wheel"
+title = "Pitch wheel output"
+kind = { enum = "route" }
+tab = "Clock & routing"
+section = "MIDI output routing"
+write = "out.pitch_wheel"
+default = 3
+read_index = 19
+evidence = "qsg"
+hint = "0x22"
+
+[[param]]
+id = "out.keyboard"
+title = "Keyboard output"
+kind = { enum = "route" }
+tab = "Clock & routing"
+section = "MIDI output routing"
+write = "out.keyboard"
+default = 3
+read_index = 21
+evidence = "qsg"
+hint = "0x23"
+
+[[param]]
+id = "out.aftertouch"
+title = "Keyboard aftertouch"
+kind = { enum = "route" }
+tab = "Clock & routing"
+section = "MIDI output routing"
+write = "out.aftertouch"
+default = 3
+read_index = 22
+evidence = "qsg"
+hint = "0x24"
+
+[[param]]
+id = "out.sequencer"
+title = "Sequencer output"
+kind = { enum = "route" }
+tab = "Clock & routing"
+section = "MIDI output routing"
+write = "out.sequencer"
+default = 3
+read_index = 23
+evidence = "qsg"
+hint = "0x25"
+
+[[param]]
+id = "out.arp"
+title = "Arpeggiator output"
+kind = { enum = "route" }
+tab = "Clock & routing"
+section = "MIDI output routing"
+write = "out.arp"
+default = 3
+read_index = 24
+evidence = "qsg"
+hint = "0x26"
