@@ -10,20 +10,7 @@
 # facts that were measured are included here. Parameters whose purpose could not
 # be established from the documentation are named neutrally.
 
-[device]
-id = "lm-drum"
-name = "LM DRUM"
-model = [0x00, 0x01, 0x28]
-family = 3
-port_hint = "LM DRUM"
-styles = ["packet-direct"]
-channel_param = "channel.rx"
-reject_codes = []
 
-[device.read]
-opcode = 0x75
-reply = 0x76
-block_len = 108
 
 notes = [
     "Measured on firmware 1.1.7: 0x75 -> 0x76 with a 108-byte block. Block offsets were mapped one packet at a time by writing, reading and restoring.",
@@ -76,6 +63,23 @@ values = [
     "Cowbell",
     "Claps",
 ]
+
+[device]
+id = "lm-drum"
+name = "LM DRUM"
+model = [0x00, 0x01, 0x28]
+family = 3
+port_hint = "LM DRUM"
+styles = ["packet-direct"]
+channel_param = "channel.rx"
+reject_codes = []
+
+[device.read]
+opcode = 0x75
+reply = 0x76
+block_len = 108
+
+
 
 # -------------------------------------------------------------- write groups
 

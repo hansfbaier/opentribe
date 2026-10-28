@@ -34,6 +34,7 @@ struct Overlay {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DeviceCfg {
     id: String,
     name: String,
@@ -49,6 +50,7 @@ struct DeviceCfg {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReadCfg {
     opcode: u8,
     reply: u8,

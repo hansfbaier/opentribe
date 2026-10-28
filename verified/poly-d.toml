@@ -10,22 +10,7 @@
 # No vendor software, data file or binary was consulted while writing this file.
 # `cargo run -p xtask` validates it and writes crates/poly-d/src/descriptors.rs.
 
-[device]
-id = "poly-d"
-name = "POLY D"
-model = [0x00, 0x01, 0x0C]
-family = 3
-port_hint = "POLY D"
-styles = ["packet-direct", "long-envelope"]
-channel_param = "channel.tx"
-restore = 0x7D
 
-reject_codes = [0x05]
-
-[device.read]
-opcode = 0x75
-reply = 0x76
-block_len = 25
 
 notes = [
     "Framing: the QSG form F0 00 20 32 00 01 0C 00 <packet> <payload> F7 is accepted. The SynthTribe 0x78 long envelope is rejected with ACK code 5, so it stays an experiment only.",
@@ -45,6 +30,25 @@ rejected = [
     { name = "Sequencer auto-sync", packet = 0x1D },
     { name = "Assign value", packet = 0x1F },
 ]
+
+[device]
+id = "poly-d"
+name = "POLY D"
+model = [0x00, 0x01, 0x0C]
+family = 3
+port_hint = "POLY D"
+styles = ["packet-direct", "long-envelope"]
+channel_param = "channel.tx"
+restore = 0x7D
+
+reject_codes = [0x05]
+
+[device.read]
+opcode = 0x75
+reply = 0x76
+block_len = 25
+
+
 
 # ---------------------------------------------------------------- label sets
 
