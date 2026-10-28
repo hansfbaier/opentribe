@@ -9,7 +9,7 @@ use tribe_core::sysex::WriteStyle;
 static LABELS_CLOCK_SOURCE: [&str; 4] = ["Internal", "MIDI DIN", "MIDI USB", "TRIG"];
 static LABELS_VOICE: [&str; 16] = ["Bass drum", "Snare", "Sidestick", "Closed hi-hat", "Open hi-hat", "Hi tom", "Mid tom", "Low tom", "Ride", "Crash", "Cabasa", "Tambourine", "High conga", "Low conga", "Cowbell", "Claps"];
 
-static PARAMS: [Param; 46] = [
+static PARAMS: [Param; 48] = [
     Param { id: "filter.cutoff", title: "Filter cutoff", kind: Kind::Byte { min: 0, max: 127 }, tab: "Voices & filter", section: "Filter", write: "cc.filter", default: 64, read_index: None, evidence: Evidence::Qsg, hint: "CC 74, manual p. 27" },
     Param { id: "tuning.bass_drum", title: "Bass drum tuning", kind: Kind::Byte { min: 0, max: 127 }, tab: "Voices & filter", section: "Voice tuning", write: "cc.bass", default: 64, read_index: None, evidence: Evidence::Qsg, hint: "CC 75" },
     Param { id: "tuning.snare_drum", title: "Snare drum tuning", kind: Kind::Byte { min: 0, max: 127 }, tab: "Voices & filter", section: "Voice tuning", write: "cc.snare", default: 64, read_index: None, evidence: Evidence::Qsg, hint: "CC 76" },
@@ -47,22 +47,25 @@ static PARAMS: [Param; 46] = [
     Param { id: "channel.rx", title: "MIDI channel RX", kind: Kind::Byte { min: 0, max: 16 }, tab: "Routing", section: "MIDI channel (packet 0x0E, sub 0x01)", write: "channel", default: 16, read_index: Some(7), evidence: Evidence::Verified, hint: "block offset 7; notes and CCs are sent on this channel" },
     Param { id: "midi.m2u", title: "MIDI through: MIDI to USB", kind: Kind::Bool, tab: "Routing", section: "MIDI through (packet 0x28)", write: "midi_through", default: 0, read_index: Some(9), evidence: Evidence::VendorNamed, hint: "offset 9; frame 28 <a> <b> writes offsets 9 and 10 together" },
     Param { id: "midi.mst", title: "MIDI through: soft through", kind: Kind::Bool, tab: "Routing", section: "MIDI through (packet 0x28)", write: "midi_through", default: 0, read_index: Some(10), evidence: Evidence::VendorNamed, hint: "offset 10; written together with offset 9" },
-    Param { id: "clock.source", title: "Clock source", kind: Kind::Enum(&LABELS_CLOCK_SOURCE), tab: "Routing", section: "Clock (packet 0x1B)", write: "clock_source", default: 0, read_index: Some(5), evidence: Evidence::VendorNamed, hint: "offset 5; values 0-2 tested, 3 untested" },
+    Param { id: "clock.source", title: "Clock source", kind: Kind::Enum(&LABELS_CLOCK_SOURCE), tab: "Routing", section: "Clock", write: "clock_source", default: 0, read_index: Some(5), evidence: Evidence::VendorNamed, hint: "offset 5 via 1B; values 0-2 tested, 3 untested" },
+    Param { id: "clock.rate", title: "Clock rate", kind: Kind::Byte { min: 99, max: 104 }, tab: "Routing", section: "Clock", write: "clock_rate", default: 103, read_index: Some(6), evidence: Evidence::VendorNamed, hint: "offset 6 via 1A; only 99-104 accepted on 1.1.7, meaning unconfirmed" },
     Param { id: "end_mode", title: "End mode", kind: Kind::Byte { min: 0, max: 2 }, tab: "Routing", section: "End mode (packet 0x2A)", write: "end_mode", default: 2, read_index: Some(30), evidence: Evidence::VendorNamed, hint: "offset 30; 0-2 accepted, 3 rejected; effect untested" },
     Param { id: "trigger.main", title: "Trigger out main", kind: Kind::Enum(&LABELS_VOICE), tab: "Routing", section: "Trigger outputs (packet 0x2C)", write: "trigger.main", default: 10, read_index: Some(32), evidence: Evidence::VendorNamed, hint: "offset 32; 0-based voice index (10 = Cabasa)" },
     Param { id: "trigger.ex", title: "Trigger out secondary", kind: Kind::Enum(&LABELS_VOICE), tab: "Routing", section: "Trigger outputs (packet 0x2C)", write: "trigger.ex", default: 11, read_index: Some(33), evidence: Evidence::VendorNamed, hint: "offset 33; 0-based voice index (11 = Tambourine)" },
     Param { id: "trigger.exex", title: "Trigger out tertiary", kind: Kind::Enum(&LABELS_VOICE), tab: "Routing", section: "Trigger outputs (packet 0x2C)", write: "trigger.exex", default: 14, read_index: Some(34), evidence: Evidence::VendorNamed, hint: "offset 34; 0-based voice index (14 = Cowbell)" },
     Param { id: "autosave", title: "Auto save", kind: Kind::Bool, tab: "Routing", section: "Switches (packet 0x74)", write: "sw.autosave", default: 1, read_index: Some(2), evidence: Evidence::VendorNamed, hint: "offset 2; frame 74 0B <value>" },
     Param { id: "beep", title: "Beep on", kind: Kind::Bool, tab: "Routing", section: "Switches (packet 0x74)", write: "sw.beep", default: 0, read_index: Some(31), evidence: Evidence::VendorNamed, hint: "offset 31; frame 74 0C <value>" },
+    Param { id: "sample.mode", title: "Sample record mode", kind: Kind::Bool, tab: "Routing", section: "Switches (packet 0x74)", write: "sw.sample_mode", default: 1, read_index: Some(54), evidence: Evidence::VendorNamed, hint: "offset 54 via 74 0A; only 0/1 accepted" },
     Param { id: "random_hat", title: "Random closed hat", kind: Kind::Bool, tab: "Routing", section: "Switches (packet 0x74)", write: "sw.random_hat", default: 0, read_index: Some(35), evidence: Evidence::VendorNamed, hint: "offset 35; frame 74 09 <value>" },
     Param { id: "accent_threshold", title: "Accent velocity threshold", kind: Kind::Byte { min: 0, max: 127 }, tab: "Voices & filter", section: "Dynamics", write: "accent", default: 109, read_index: Some(36), evidence: Evidence::VendorNamed, hint: "offset 36 via 1C <value>; behavioural effect untested" },
 ];
 
-static WRITES: [WriteGroup; 29] = [
+static WRITES: [WriteGroup; 31] = [
     WriteGroup { id: "channel", addr: Addr::PacketSub(0x0E, 0x01), slots: &[Slot::Param("channel.tx"), Slot::Param("channel.rx")] },
     WriteGroup { id: "note_map", addr: Addr::Packet(0x29), slots: &[Slot::Param("note.slot01"), Slot::Param("note.slot02"), Slot::Param("note.slot03"), Slot::Param("note.slot04"), Slot::Param("note.slot05"), Slot::Param("note.slot06"), Slot::Param("note.slot07"), Slot::Param("note.slot08"), Slot::Param("note.slot09"), Slot::Param("note.slot10"), Slot::Param("note.slot11"), Slot::Param("note.slot12"), Slot::Param("note.slot13"), Slot::Param("note.slot14"), Slot::Param("note.slot15"), Slot::Param("note.slot16")] },
     WriteGroup { id: "midi_through", addr: Addr::Packet(0x28), slots: &[Slot::Param("midi.m2u"), Slot::Param("midi.mst")] },
     WriteGroup { id: "clock_source", addr: Addr::Packet(0x1B), slots: &[Slot::Param("clock.source")] },
+    WriteGroup { id: "clock_rate", addr: Addr::Packet(0x1A), slots: &[Slot::Param("clock.rate")] },
     WriteGroup { id: "end_mode", addr: Addr::Packet(0x2A), slots: &[Slot::Param("end_mode")] },
     WriteGroup { id: "trigger.main", addr: Addr::PacketSub(0x2C, 0x00), slots: &[Slot::Param("trigger.main")] },
     WriteGroup { id: "trigger.ex", addr: Addr::PacketSub(0x2C, 0x01), slots: &[Slot::Param("trigger.ex")] },
@@ -70,6 +73,7 @@ static WRITES: [WriteGroup; 29] = [
     WriteGroup { id: "sw.autosave", addr: Addr::PacketSub(0x74, 0x0B), slots: &[Slot::Param("autosave")] },
     WriteGroup { id: "sw.beep", addr: Addr::PacketSub(0x74, 0x0C), slots: &[Slot::Param("beep")] },
     WriteGroup { id: "sw.random_hat", addr: Addr::PacketSub(0x74, 0x09), slots: &[Slot::Param("random_hat")] },
+    WriteGroup { id: "sw.sample_mode", addr: Addr::PacketSub(0x74, 0x0A), slots: &[Slot::Param("sample.mode")] },
     WriteGroup { id: "accent", addr: Addr::Packet(0x1C), slots: &[Slot::Param("accent_threshold")] },
     WriteGroup { id: "cc.filter", addr: Addr::Cc(74), slots: &[Slot::Param("filter.cutoff")] },
     WriteGroup { id: "cc.bass", addr: Addr::Cc(75), slots: &[Slot::Param("tuning.bass_drum")] },

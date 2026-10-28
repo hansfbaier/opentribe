@@ -60,6 +60,8 @@ Resulting layout for the descriptors:
 | 14-29 | note map, 16 slots | `29` |
 | 30 | 0x2A value | `2A` |
 | 36 | 0x1C value | `1C` |
+| 6 | clock rate | `1A` |
+| 54 | sample mode | `74 0A` |
 | 5 | 0x1B value | `1B` |
 
 The final block equals the baseline byte for byte.

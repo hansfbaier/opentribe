@@ -67,7 +67,7 @@ therefore exposes exactly what has a source:
 | --- | --- | --- |
 | Voices & filter | CC 74 filter cutoff, CC 75-90 voice tunings, accent threshold (`1C`, offset 36) | manual p. 27, measured |
 | Note map | 16 note slots at block offsets 14-29, packet `0x29` | measured |
-| Routing | channel TX/RX (`0E` sub `01`), MIDI through (`28` two-field frame → offsets 9/10), clock source (`1B` → offset 5), end mode (`2A`), three trigger outputs (`2C` sub 0-2 → voice indices), auto save / beep / random hat (`74` subs `0B`/`0C`/`09`) | measured |
+| Routing | channel TX/RX (`0E` sub `01`), MIDI through (`28` two-field frame → offsets 9/10), clock source (`1B` → offset 5) and rate (`1A` → offset 6), end mode (`2A`), three trigger outputs (`2C` sub 0-2 → voice indices), auto save / beep / random hat / sample mode (`74` subs `0B`/`0C`/`09`/`0A`) | measured |
 | Play & test | keyboard, bend, wheels, all-notes-off | generic |
 
 `vendor-named` marks a parameter whose wire address is measured while its human name comes
@@ -75,9 +75,9 @@ from the vendor configuration; the reference tab shows the tag. Voice indices in
 outputs use the manual's voice order (verified against the unit's baseline `0A 0B 0E` =
 Cabasa/Tambourine/Cowbell).
 
-Still open: the `0E` sub-index map, clock rate/polarity frame, the four flags at offsets
-54/55/72/73, note-slot to voice order, persistence of a changed value, and the sequencer/sample
-paths. See the research handoff in the RE notebook.
+Still open: the USB channel fields at offsets 11/12, clock polarity, the flags at offsets
+55/72/73, the voice channel map writer, note-slot to voice order, persistence of a changed value,
+and the sequencer/sample paths. See the research handoff in the RE notebook.
 
 ## POLY D findings (firmware 1.1.3)
 

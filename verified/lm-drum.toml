@@ -30,6 +30,9 @@ notes = [
     "ACK codes are per packet: silence means unknown packet or sub-index, 01 00 00 means applied, and 01 00 01 is both a rejection and the answer to every applied 0x0E write.",
     "Two-field frame: 28 <a> <b> writes block offsets 9 and 10 in one message; it is not a sub-index container.",
     "2C <sub> <value> writes block offsets 32-34; the value is a 0-based voice index in the manual voice order.",
+    "1A <value> writes block offset 6 (clock rate); on firmware 1.1.7 only 99-104 are accepted.",
+    "74 0A <value> writes block offset 54 (sample mode); only 0 and 1 are accepted.",
+    "0E sub 01 writes TX then RX (offsets 8/7); other sub values tested (2-5) wrote TX only. No writer found for the USB in/out channels at offsets 11/12.",
     "74 <sub> <value> addresses single switches: sub 09 -> offset 35, 0B -> offset 2, 0C -> offset 31.",
     "76 is not accepted as a bulk write: 76 <108 bytes> produced no ACK and no block change.",
     "Note-map slots (packet 29) are 16 bytes at offsets 14-29; the voice behind each slot is not published, so slots are named by position.",
@@ -113,6 +116,11 @@ packet = 0x1B
 slots = [{ param = "clock.source" }]
 
 [[write]]
+id = "clock_rate"
+packet = 0x1A
+slots = [{ param = "clock.rate" }]
+
+[[write]]
 id = "end_mode"
 packet = 0x2A
 slots = [{ param = "end_mode" }]
@@ -152,6 +160,12 @@ id = "sw.random_hat"
 packet = 0x74
 sub = 0x09
 slots = [{ param = "random_hat" }]
+
+[[write]]
+id = "sw.sample_mode"
+packet = 0x74
+sub = 0x0A
+slots = [{ param = "sample.mode" }]
 
 [[write]]
 id = "accent"
@@ -675,12 +689,24 @@ id = "clock.source"
 title = "Clock source"
 kind = { enum = "clock_source" }
 tab = "Routing"
-section = "Clock (packet 0x1B)"
+section = "Clock"
 write = "clock_source"
 default = 0
 read_index = 5
 evidence = "vendor-named"
-hint = "offset 5; values 0-2 tested, 3 untested"
+hint = "offset 5 via 1B; values 0-2 tested, 3 untested"
+
+[[param]]
+id = "clock.rate"
+title = "Clock rate"
+kind = { byte = [99, 104] }
+tab = "Routing"
+section = "Clock"
+write = "clock_rate"
+default = 103
+read_index = 6
+evidence = "vendor-named"
+hint = "offset 6 via 1A; only 99-104 accepted on 1.1.7, meaning unconfirmed"
 
 [[param]]
 id = "end_mode"
@@ -753,6 +779,18 @@ default = 0
 read_index = 31
 evidence = "vendor-named"
 hint = "offset 31; frame 74 0C <value>"
+
+[[param]]
+id = "sample.mode"
+title = "Sample record mode"
+kind = { bool = true }
+tab = "Routing"
+section = "Switches (packet 0x74)"
+write = "sw.sample_mode"
+default = 1
+read_index = 54
+evidence = "vendor-named"
+hint = "offset 54 via 74 0A; only 0/1 accepted"
 
 [[param]]
 id = "random_hat"

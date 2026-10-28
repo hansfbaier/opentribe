@@ -117,6 +117,8 @@ fn measured_frames_match_the_wire() {
     let cases: &[(&str, u8, &str)] = &[
         ("end_mode", 0x01, "2A 01"),
         ("clock.source", 0x02, "1B 02"),
+        ("clock.rate", 100, "1A 64"),
+        ("sample.mode", 0x00, "74 0A 00"),
         ("accent_threshold", 0x40, "1C 40"),
         ("autosave", 0x00, "74 0B 00"),
         ("beep", 0x01, "74 0C 01"),
@@ -164,6 +166,8 @@ fn observed_block_decodes_to_measured_state() {
     assert_eq!(values.get("midi.m2u"), Some(0));
     assert_eq!(values.get("midi.mst"), Some(0));
     assert_eq!(values.get("clock.source"), Some(0));
+    assert_eq!(values.get("clock.rate"), Some(103));
+    assert_eq!(values.get("sample.mode"), Some(1));
     assert_eq!(values.get("end_mode"), Some(2));
     assert_eq!(values.get("trigger.main"), Some(10));
     assert_eq!(values.get("trigger.ex"), Some(11));
