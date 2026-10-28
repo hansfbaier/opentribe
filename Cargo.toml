@@ -1,0 +1,19 @@
+[package]
+name = "open-poly-d"
+version = "0.1.0"
+edition = "2024"
+description = "egui controller for the Behringer POLY D (global SysEx settings)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/open-poly-d"
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = [
+    "glow",
+    "default_fonts",
+    "wayland",
+    "x11",
+] }
+midir = "0.10"
+
+[profile.release]
+opt-level = 2
