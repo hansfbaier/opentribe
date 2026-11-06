@@ -6,6 +6,7 @@
 //! `verified/lm-drum-measurements.md`.
 
 pub mod descriptors;
+pub mod sample;
 
 pub use descriptors::DEVICE;
 
