@@ -94,7 +94,7 @@ static WRITES: [WriteGroup; 31] = [
     WriteGroup { id: "cc.claps", addr: Addr::Cc(90), slots: &[Slot::Param("tuning.claps")] },
 ];
 
-static SAMPLES: SampleSpec = SampleSpec { slots: 96, notes: &["Slot count (96) is an estimate; the transfer frames to and from the instrument have not been captured yet.", "Import decodes a WAV file into the selected slot (any encoding, converted to mono 16-bit); export writes a slot back to a WAV file.", "Factory samples cannot be read back yet, and sending a sample to the instrument is not implemented — recording the vendor app's USB traffic during a sample import/export settles the protocol.", "Per-slot length and sample-rate limits are unverified; imported audio keeps its original sample rate."] };
+static SAMPLES: SampleSpec = SampleSpec { slots: 96, notes: &["Slot count (96) is an estimate; the transfer frames to and from the instrument have not been captured yet.", "Read-first: the app asks the device which slots are empty and which hold a sample before showing statuses; until the slot-list read frame is captured, every slot shows 'not read'.", "Import decodes a WAV file into the selected slot (any encoding, converted to mono 16-bit); importing into a non-empty slot warns about overwriting.", "Samples on the device cannot be downloaded yet, and sending a sample to the instrument is not implemented — recording the vendor app's traffic while it reads slots or imports/exports a sample (or over USB) settles the protocol.", "Per-slot length and sample-rate limits are unverified; imported audio keeps its original sample rate."] };
 
 pub static DEVICE: &Device = &Device {
     id: "lm-drum",

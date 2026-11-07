@@ -1,14 +1,18 @@
 //! Sample surface: import/export of WAV files into the instrument's sample
 //! slots, and the grid that shows them.
 //!
+//! The grid is read-first, like the original app: slot contents are unknown
+//! until the device answers a slot-list read, then each slot shows either
+//! *empty* or *filled*. Imported WAV audio lives on top of that status.
+//!
 //! What is implemented, honestly:
 //! - Import decodes a WAV file (any encoding `hound` reads), converts it to
 //!   mono 16-bit and stores it in the selected slot.
 //! - Export writes a slot's audio back to a 16-bit mono WAV file.
-//! - Transfer to and from the instrument is **not** implemented: the transfer
-//!   frames have not been captured. The tab says so instead of pretending.
-//!   Recording the vendor app's USB traffic while it imports or exports a
-//!   sample settles the protocol.
+//! - The slot-list read and transfer to and from the instrument are **not**
+//!   implemented: those frames have not been captured. Slots therefore stay
+//!   *not read* until the protocol is captured (e.g. by recording the vendor
+//!   app's traffic while it opens the sample screen, or over USB).
 
 use std::path::Path;
 
@@ -19,30 +23,43 @@ use crate::descriptor::SampleSpec;
 use crate::log::Log;
 use crate::widgets::{MUTED, OK, WARN};
 
-/// Where a slot's audio came from.
+/// What the device reports for a slot (or what we know locally).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Source {
-    /// Shipped with the instrument; we cannot read it back yet.
-    Factory,
-    /// Imported from a WAV file this session.
-    Imported,
+pub enum SlotStatus {
+    /// The slot list has not been read from the device yet.
+    Unknown,
+    /// The device reports this slot as empty.
+    Empty,
+    /// The device reports this slot as holding a sample.
+    Filled,
 }
 
 pub struct SampleSlot {
+    /// File name when audio was imported locally; `Slot NN` otherwise.
     pub name: String,
-    pub source: Source,
+    /// The device's answer to the slot-list read, or [`SlotStatus::Unknown`].
+    pub on_device: SlotStatus,
     pub sample_rate: u32,
-    /// Mono 16-bit audio; `None` for factory slots (no transfer protocol yet).
+    /// Mono 16-bit audio; `None` unless imported locally this session.
     pub audio: Option<Vec<i16>>,
 }
 
 impl SampleSlot {
-    fn factory(index: usize) -> Self {
+    fn blank(index: usize) -> Self {
         Self {
             name: format!("Slot {:02}", index + 1),
-            source: Source::Factory,
+            on_device: SlotStatus::Unknown,
             sample_rate: 0,
             audio: None,
+        }
+    }
+
+    /// Shown status: local audio wins, otherwise the device's answer.
+    pub fn status(&self) -> SlotStatus {
+        if self.audio.is_some() {
+            SlotStatus::Filled
+        } else {
+            self.on_device
         }
     }
 
@@ -60,7 +77,10 @@ impl SampleSlot {
                 self.sample_rate,
                 audio.len()
             ),
-            _ => "factory sample · not readable yet".to_string(),
+            (None, _) if self.on_device == SlotStatus::Filled => {
+                "filled on device · audio not readable yet".to_string()
+            }
+            _ => "-".to_string(),
         }
     }
 }
@@ -69,13 +89,29 @@ impl SampleSlot {
 pub struct SampleBank {
     pub slots: Vec<SampleSlot>,
     pub selected: usize,
+    /// Set by the UI; the app shell performs the read attempt and clears it.
+    pub read_pending: bool,
 }
 
 impl SampleBank {
     pub fn new(slot_count: usize) -> Self {
         Self {
-            slots: (0..slot_count).map(SampleSlot::factory).collect(),
+            slots: (0..slot_count).map(SampleSlot::blank).collect(),
             selected: 0,
+            read_pending: false,
+        }
+    }
+
+    /// Apply a slot-list read from the device: `filled[i]` says whether slot
+    /// `i` holds a sample. Slots with locally imported audio keep their audio;
+    /// their device status is recorded so `clear_imported` restores it.
+    pub fn mark_read(&mut self, filled: &[bool]) {
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            slot.on_device = if filled.get(index).copied().unwrap_or(false) {
+                SlotStatus::Filled
+            } else {
+                SlotStatus::Empty
+            };
         }
     }
 
@@ -89,9 +125,15 @@ impl SampleBank {
             Ok((rate, mono)) => {
                 let seconds = mono.len() as f32 / rate.max(1) as f32;
                 let index = self.selected;
+                if self.slots[index].status() == SlotStatus::Filled {
+                    log.info(format!(
+                        "note: slot {} is not empty — importing overwrites it",
+                        index + 1
+                    ));
+                }
                 self.slots[index] = SampleSlot {
                     name: file_name.clone(),
-                    source: Source::Imported,
+                    on_device: self.slots[index].on_device,
                     sample_rate: rate,
                     audio: Some(mono),
                 };
@@ -104,6 +146,18 @@ impl SampleBank {
         }
     }
 
+    /// Drop locally imported audio; slots return to their device-read status.
+    pub fn clear_imported(&mut self, log: &mut Log) {
+        for (index, slot) in self.slots.iter_mut().enumerate() {
+            if slot.audio.is_some() {
+                slot.audio = None;
+                slot.sample_rate = 0;
+                slot.name = format!("Slot {:02}", index + 1);
+            }
+        }
+        log.info("imported samples cleared");
+    }
+
     /// Write the selected slot's audio to a WAV file.
     pub fn export_wav(&self, slot_index: usize, path: &Path, log: &mut Log) {
         let Some(slot) = self.slots.get(slot_index) else {
@@ -112,7 +166,7 @@ impl SampleBank {
         };
         let Some(audio) = &slot.audio else {
             log.error(format!(
-                "slot {} has no audio: factory samples cannot be read back yet",
+                "slot {} has no local audio: samples on the device cannot be read back yet",
                 slot_index + 1
             ));
             return;
@@ -230,6 +284,18 @@ pub fn samples_tab(
             crate::widgets::section(ui, "Sample import / export");
             ui.horizontal(|ui| {
                 if ui
+                    .button("Read slot contents")
+                    .on_hover_text(
+                        "Reads which slots are empty and which are filled from the device. \
+                         The read frame has not been captured yet, so this asks the shell to \
+                         attempt it and report honestly.",
+                    )
+                    .clicked()
+                {
+                    bank.read_pending = true;
+                }
+                ui.separator();
+                if ui
                     .button("Import WAV into selected slot…")
                     .on_hover_text("Decodes a WAV file into the selected slot (mono 16-bit)")
                     .clicked()
@@ -263,12 +329,7 @@ pub fn samples_tab(
                 ui.weak(format!("{} slots", spec.slots));
                 ui.separator();
                 if ui.button("Clear imported").clicked() {
-                    for (index, slot) in bank.slots.iter_mut().enumerate() {
-                        if slot.source == Source::Imported {
-                            *slot = SampleSlot::factory(index);
-                        }
-                    }
-                    log.info("imported samples cleared");
+                    bank.clear_imported(log);
                 }
             });
 
@@ -278,7 +339,7 @@ pub fn samples_tab(
                 .spacing([12.0, 4.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    for header in ["slot", "name", "source", "audio", "transfer"] {
+                    for header in ["slot", "name", "status", "audio", "transfer"] {
                         ui.label(RichText::new(header).strong().size(12.0));
                     }
                     ui.end_row();
@@ -296,12 +357,20 @@ pub fn samples_tab(
                             RichText::new(&slot.name)
                         };
                         ui.label(name);
-                        match slot.source {
-                            Source::Factory => {
-                                ui.label(RichText::new("factory").color(MUTED).size(12.0));
+                        match slot.status() {
+                            SlotStatus::Unknown => {
+                                ui.label(RichText::new("not read").color(MUTED).size(12.0));
                             }
-                            Source::Imported => {
-                                ui.label(RichText::new("imported").color(OK).size(12.0));
+                            SlotStatus::Empty => {
+                                ui.label(RichText::new("empty").color(OK).size(12.0));
+                            }
+                            SlotStatus::Filled => {
+                                let text = if slot.audio.is_some() {
+                                    "imported"
+                                } else {
+                                    "filled"
+                                };
+                                ui.label(RichText::new(text).color(OK).size(12.0));
                             }
                         }
                         ui.label(RichText::new(slot.summary()).size(12.0));
@@ -348,23 +417,46 @@ mod tests {
     }
 
     #[test]
-    fn import_fills_the_selected_slot() {
+    fn slots_start_unread_until_a_read_answers() {
+        let bank = SampleBank::new(4);
+        assert!(
+            bank.slots
+                .iter()
+                .all(|slot| slot.status() == SlotStatus::Unknown)
+        );
+
+        let mut bank = bank;
+        bank.mark_read(&[true, false, false, true]);
+        assert_eq!(bank.slots[0].status(), SlotStatus::Filled);
+        assert_eq!(bank.slots[1].status(), SlotStatus::Empty);
+        assert_eq!(bank.slots[3].status(), SlotStatus::Filled);
+    }
+
+    #[test]
+    fn import_fills_the_selected_slot_and_clear_restores_the_read_status() {
         let path = temp_wav();
         encode_wav(&path, 44100, &[100, -100, 50, -50]).unwrap_or_else(|_| panic!("encodes"));
         let mut bank = SampleBank::new(4);
+        bank.mark_read(&[true, false, false, false]);
         bank.selected = 2;
         let mut log = Log::default();
         bank.import_wav(&path, &mut log);
         let slot = &bank.slots[2];
-        assert_eq!(slot.source, Source::Imported);
+        assert_eq!(slot.status(), SlotStatus::Filled);
         assert_eq!(slot.sample_rate, 44100);
         assert_eq!(slot.audio.as_deref(), Some(&[100, -100, 50, -50][..]));
+
+        // Clearing drops the local audio and returns to the device's answer.
+        bank.clear_imported(&mut log);
+        assert_eq!(bank.slots[2].status(), SlotStatus::Empty);
+        assert_eq!(bank.slots[0].status(), SlotStatus::Filled);
         let _ = std::fs::remove_file(&path);
     }
 
     #[test]
-    fn export_refuses_factory_slots() {
-        let bank = SampleBank::new(2);
+    fn export_refuses_slots_without_local_audio() {
+        let mut bank = SampleBank::new(2);
+        bank.mark_read(&[true, false]);
         let path = temp_wav();
         let mut log = Log::default();
         bank.export_wav(0, &path, &mut log);

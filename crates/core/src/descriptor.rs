@@ -347,6 +347,23 @@ pub fn read_request(device: &Device, device_id: u8) -> Option<Vec<u8>> {
     ))
 }
 
+/// Request the sample slot list (which slots are empty, which hold a sample).
+///
+/// The read-first seam: no device has a captured slot-list read yet, so this
+/// returns `None` and the UI honestly reports the gap. When the frames are
+/// captured (vendor app traffic or USB), build the request here per device.
+pub fn slot_list_request(_device: &Device, _device_id: u8) -> Option<Vec<u8>> {
+    None
+}
+
+/// Parse a sample slot-list reply into per-slot filled flags.
+///
+/// See [`slot_list_request`]; returns `None` until the reply frame is
+/// captured. When it is, map the payload to `Vec<bool>` here.
+pub fn apply_slot_list(_device: &Device, _body: &[u8]) -> Option<Vec<bool>> {
+    None
+}
+
 /// Query the DFU operation mode.
 pub fn mode_request(device: &Device, device_id: u8) -> Vec<u8> {
     sysex::op_message(

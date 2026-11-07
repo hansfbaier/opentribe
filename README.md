@@ -49,9 +49,11 @@ transcripts are in [`verified/`](verified/).
 
 LM DRUM coverage: filter cutoff and 16 voice tunings (documented CCs), accent threshold, note
 map, MIDI channel, MIDI through, clock source and rate, end mode, three trigger outputs and the
-`74` switches (auto save, beep, random closed hat, sample mode). The **Samples** tab imports and
-exports WAV files into the sample slots locally (mono 16-bit, any WAV encoding `hound` reads);
-transfer to and from the instrument waits for captured transfer frames.
+`74` switches (auto save, beep, random closed hat, sample mode). The **Samples** tab is
+read-first: on connect it asks the device which slots are empty and which hold a sample
+(slots show *not read* until that frame is captured), and it imports and exports WAV files
+into the slots locally (mono 16-bit, any WAV encoding `hound` reads); transfer to and from
+the instrument waits for captured transfer frames.
 
 ## Screenshots
 

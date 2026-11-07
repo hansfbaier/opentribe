@@ -170,6 +170,7 @@ impl TribeApp {
             self.connect_input(ctx);
         }
         self.read_settings();
+        self.attempt_slot_read();
     }
 
     fn connect_output(&mut self) {
@@ -203,6 +204,22 @@ impl TribeApp {
         match descriptor::read_request(self.device, self.device_id) {
             Some(bytes) => self.send_message("read settings", bytes),
             None => self.log.info("this device has no documented settings read"),
+        }
+    }
+
+    /// Read-first for the sample surface: ask the device which slots are
+    /// empty and which hold a sample (on connect and via the tab's button).
+    fn attempt_slot_read(&mut self) {
+        if self.samples.is_none() {
+            return;
+        }
+        match descriptor::slot_list_request(self.device, self.device_id) {
+            Some(bytes) => self.send_message("read sample slot list", bytes),
+            None => self.log.info(
+                "sample slot list read: the request frame is not captured yet, \
+                 so slots stay 'not read' — record the vendor app's traffic while \
+                 it opens the sample screen (or over USB) to settle it",
+            ),
         }
     }
 
@@ -310,6 +327,18 @@ impl TribeApp {
                 None => (Dir::Info, "empty message".to_string()),
             };
         };
+
+        if let Some(filled) = descriptor::apply_slot_list(self.device, message.body) {
+            let total = filled.len();
+            let count = filled.iter().filter(|flag| **flag).count();
+            if let Some(bank) = self.samples.as_mut() {
+                bank.mark_read(&filled);
+            }
+            return (
+                Dir::Rx,
+                format!("sample slot list · {count} of {total} slots filled"),
+            );
+        }
 
         if let Some(block) = message.body.strip_prefix(&[sysex::op::SETTINGS_BLOCK]) {
             let expected = self.device.read.map(|spec| spec.block_len).unwrap_or(0);
@@ -1006,6 +1035,12 @@ impl eframe::App for TribeApp {
             .min_size(70.0)
             .show(ui, |ui| self.log_panel(ui));
         egui::CentralPanel::default().show(ui, |ui| self.tabs(ui));
+        if self.samples.as_ref().is_some_and(|bank| bank.read_pending) {
+            if let Some(bank) = self.samples.as_mut() {
+                bank.read_pending = false;
+            }
+            self.attempt_slot_read();
+        }
         self.flush();
     }
 }
