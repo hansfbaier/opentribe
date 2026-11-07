@@ -1,0 +1,18 @@
+[package]
+name = "tribe-update"
+description = "Firmware updater for Behringer / Music Tribe instruments"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "tribe_update"
+path = "src/lib.rs"
+
+[[bin]]
+name = "opentribe-update"
+path = "src/main.rs"
+
+[dependencies]
+tribe-core = { path = "../core" }
+serde_json = "1"

@@ -126,6 +126,48 @@ write group keep their current values.
 `set_param`, `send_sysex`, `monitor` — so an agent can drive the instrument the same way the
 GUI does.
 
+## Firmware updates
+
+`opentribe-update` replays the vendor `.syx` firmware streams for PRO 800, POLY D, LM DRUM,
+CRAVE and MODEL D. It sends the file byte for byte at the vendor pace rather than rebuilding
+messages, because the vendor application does exactly that and the header fields are not fully
+understood.
+
+```sh
+cargo run -p tribe-update -- devices
+cargo run -p tribe-update -- inspect --file pro800_1.4.6.syx
+cargo run -p tribe-update -- status --device pro-800
+cargo run -p tribe-update -- flash --device pro-800 --file pro800_1.4.6.syx          # plan only
+cargo run -p tribe-update -- flash --device pro-800 --file pro800_1.4.6.syx --send   # writes
+```
+
+| Step | What it does |
+| --- | --- |
+| `inspect` | parses the stream offline: message count, MD5, segments, packet counters, payload bytes, and which device the file addresses |
+| `status` | sends `0x02` and `0x08 00`, prints mode and firmware version — read-only |
+| `flash` (no `--send`) | prints the validated plan: device, MD5, prelude frames, pace, time estimate |
+| `flash --send` | mode query → `03 30` → wait for the bootloader port → replay at 10 ms/message → report ACKs |
+
+Safety rails: the file must match the device's model bytes or the plan is refused; `--md5`
+refuses a file whose digest differs from the one you expect; `--no-reboot` refuses to send to a
+unit that does not report bootloader mode; and no firmware is written without `--send`.
+
+Device coverage and what is *not* verified:
+
+| Device | Firmware flavour | Status |
+| --- | --- | --- |
+| PRO 800 | `0A` header + `0B` packets, 255-byte messages | file parses, plan validated, transfer unverified |
+| POLY D | same, 308-byte messages, 3 segments | same |
+| LM DRUM | same, 308-byte messages, single 1.5 MB segment | same |
+| CRAVE | family 1 short envelope, 526-byte messages | same |
+| MODEL D | INNO bootloader `5A` commands, 523-byte blocks | same |
+| NEUTRON | STM32 USB DFU (libusb, not SysEx) | listed, not driven |
+
+No unit has been flashed with this tool. The bootloader MIDI port has never been observed on
+Linux, so the reboot-and-reconnect step is the first thing to check on hardware. Keep the
+vendor updater available as a fallback: a unit left in bootloader mode needs a successful
+transfer, and the vendor tool is the known-good path.
+
 ## How it works
 
 ```text
@@ -139,7 +181,8 @@ crates/<device>/src/descriptors.rs     generated, committed, stale-checked in CI
 tribe-core  ──  sysex envelope + framing, MIDI I/O, log, egui shell, widgets, CLI, MCP
         │
         ├── opentribe-poly-d     lib + binary
-        └── opentribe-lm-drum    lib + binary
+        ├── opentribe-lm-drum    lib + binary
+        └── tribe-update ── opentribe-update   firmware replay (no descriptor needed)
 ```
 
 A descriptor is a list of `Param`s and `WriteGroup`s. A write group is an address (packet,
@@ -189,7 +232,7 @@ and [`verified/lm-drum-measurements.md`](verified/lm-drum-measurements.md).
 ## Development
 
 ```sh
-cargo test --workspace                     # 41 tests
+cargo test --workspace                     # 73 tests
 cargo clippy --workspace --all-targets
 cargo fmt --all -- --check
 cargo run -p xtask                         # regenerate descriptors
