@@ -55,8 +55,18 @@ struct DeviceCfg {
 struct SamplesCfg {
     slots: usize,
     directory: Option<DirectoryCfg>,
+    banks: Option<BanksCfg>,
     #[serde(default)]
     notes: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BanksCfg {
+    read_opcode: u8,
+    write_opcode: u8,
+    sub_base: u8,
+    count: usize,
 }
 
 #[derive(Deserialize)]
@@ -381,6 +391,19 @@ fn validate(overlay: &Overlay) -> Result<(), String> {
             return Err("samples.directory: length field exceeds the record".to_string());
         }
     }
+    if let Some(banks) = overlay
+        .device
+        .samples
+        .as_ref()
+        .and_then(|samples| samples.banks.as_ref())
+    {
+        if banks.count == 0 || banks.count > 128 {
+            return Err("samples.banks: count is outside 1..=128".to_string());
+        }
+        if usize::from(banks.sub_base) + banks.count > 0x80 {
+            return Err("samples.banks: sub-opcodes exceed 0x7F".to_string());
+        }
+    }
     Ok(())
 }
 
@@ -410,9 +433,13 @@ fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
         "// instrument. See PROVENANCE.md for the data lineage."
     );
     let _ = writeln!(out);
-    let sample_spec = match device.samples.as_ref().and_then(|s| s.directory.as_ref()) {
-        Some(_) => "SampleDirectory, SampleSpec, ",
-        None if device.samples.is_some() => "SampleSpec, ",
+    let sample_spec = match device.samples.as_ref() {
+        Some(samples) if samples.directory.is_some() && samples.banks.is_some() => {
+            "BankSpec, SampleDirectory, SampleSpec, "
+        }
+        Some(samples) if samples.directory.is_some() => "SampleDirectory, SampleSpec, ",
+        Some(samples) if samples.banks.is_some() => "BankSpec, SampleSpec, ",
+        Some(_) => "SampleSpec, ",
         None => "",
     };
     let _ = writeln!(
@@ -562,9 +589,16 @@ fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
             ),
             None => "None".to_string(),
         };
+        let banks = match &samples.banks {
+            Some(banks) => format!(
+                "Some(BankSpec {{ read_opcode: {:#04X}, write_opcode: {:#04X}, sub_base: {:#04X}, count: {} }})",
+                banks.read_opcode, banks.write_opcode, banks.sub_base, banks.count
+            ),
+            None => "None".to_string(),
+        };
         let _ = writeln!(
             out,
-            "static SAMPLES: SampleSpec = SampleSpec {{ slots: {}, directory: {directory}, notes: &[{}] }};",
+            "static SAMPLES: SampleSpec = SampleSpec {{ slots: {}, directory: {directory}, banks: {banks}, notes: &[{}] }};",
             samples.slots,
             string_slice(&samples.notes)
         );

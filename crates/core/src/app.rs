@@ -14,6 +14,7 @@ use crate::sysex::{self, WriteStyle};
 use crate::widgets::{self, DANGER, HEADING, MUTED, OK, WARN};
 
 const SAMPLE_TAB: &str = "Samples";
+const BANK_TAB: &str = "Banks";
 const PLAY_TAB: &str = "Play & test";
 const CONSOLE_TAB: &str = "Console";
 const REFERENCE_TAB: &str = "Reference";
@@ -50,6 +51,10 @@ pub struct TribeApp {
     samples: Option<SampleBank>,
     /// Entries accumulated from the multi-message `77 30` directory reply.
     sample_directory: Vec<descriptor::SampleEntry>,
+    bank_file: Option<crate::banks::BankFile>,
+    bank_target: u8,
+    bank_readback: Option<(u8, Vec<u8>)>,
+    confirm_bank_write: bool,
 }
 
 impl TribeApp {
@@ -84,6 +89,10 @@ impl TribeApp {
             settings_loaded: false,
             samples: device.samples.map(|spec| SampleBank::new(spec.slots)),
             sample_directory: Vec::new(),
+            bank_file: None,
+            bank_target: 0,
+            bank_readback: None,
+            confirm_bank_write: false,
         };
 
         cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
@@ -113,6 +122,9 @@ impl TribeApp {
         // The sample surface is the default view when the device has one.
         if self.device.samples.is_some() {
             titles.push(SAMPLE_TAB);
+        }
+        if self.device.samples.and_then(|spec| spec.banks).is_some() {
+            titles.push(BANK_TAB);
         }
         titles.extend(self.param_tabs.iter().copied());
         titles.push(PLAY_TAB);
@@ -329,6 +341,11 @@ impl TribeApp {
                 None => (Dir::Info, "empty message".to_string()),
             };
         };
+
+        if let Some((bank, payload)) = crate::banks::parse_reply(self.device, message.body) {
+            self.bank_readback = Some((bank, payload));
+            return (Dir::Rx, format!("bank {bank} read"));
+        }
 
         if let Some(entries) = descriptor::apply_slot_list(self.device, message.body) {
             self.sample_directory.extend(entries);
@@ -651,6 +668,8 @@ impl TribeApp {
                 if let (Some(spec), Some(bank)) = (self.device.samples, self.samples.as_mut()) {
                     crate::samples::samples_tab(ui, spec, bank, &mut self.log);
                 }
+            } else if title == BANK_TAB {
+                self.banks_tab(ui);
             } else if title == PLAY_TAB {
                 self.play_tab(ui);
             } else if title == CONSOLE_TAB {
@@ -987,6 +1006,150 @@ impl TribeApp {
             self.performance_channel(),
             group,
         ))
+    }
+
+    fn banks_tab(&mut self, ui: &mut egui::Ui) {
+        let Some(spec) = self.device.samples.and_then(|samples| samples.banks) else {
+            return;
+        };
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                widgets::section(ui, "Bank record import / export");
+                ui.horizontal(|ui| {
+                    ui.label("Bank");
+                    let mut target = usize::from(self.bank_target);
+                    ui.add(
+                        egui::Slider::new(&mut target, 0..=spec.count.saturating_sub(1)).text(""),
+                    );
+                    self.bank_target = target as u8;
+                    if ui.button("Read bank").clicked() {
+                        if let Some(bytes) = crate::banks::read_request(
+                            self.device,
+                            self.device_id,
+                            self.bank_target,
+                        ) {
+                            self.bank_readback = None;
+                            self.send_message("read bank record", bytes);
+                        }
+                    }
+                    if ui.button("Load .syx…").clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Bank SysEx", &["syx"])
+                            .pick_file()
+                    {
+                        match crate::banks::load_file(self.device, &path) {
+                            Ok(file) => {
+                                self.log.info(format!(
+                                    "{}: bank {} · {} bytes",
+                                    file.path.display(),
+                                    file.source_bank,
+                                    file.payload.len()
+                                ));
+                                self.bank_target = file.source_bank;
+                                self.bank_file = Some(file);
+                            }
+                            Err(err) => self.log.error(err),
+                        }
+                    }
+                    if self.bank_file.is_some() && ui.button("Write to device…").clicked() {
+                        self.confirm_bank_write = true;
+                    }
+                });
+
+                if let Some(file) = &self.bank_file {
+                    ui.label(format!(
+                        "loaded: {} · source bank {} · {} bytes",
+                        file.path.display(),
+                        file.source_bank,
+                        file.payload.len()
+                    ));
+                    ui.label(
+                        RichText::new(
+                            "Writing replaces the target bank record. A read-back follows the ACK.",
+                        )
+                        .color(WARN),
+                    );
+                } else {
+                    ui.weak("load a vendor-exported .syx bank file");
+                }
+
+                if let Some((bank, payload)) = &self.bank_readback {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("read back: bank {bank} · {} bytes", payload.len()));
+                        if ui.button("Save as .syx…").clicked()
+                            && let Some(path) = rfd::FileDialog::new()
+                                .set_file_name(format!("bank{bank}.syx"))
+                                .add_filter("Bank SysEx", &["syx"])
+                                .save_file()
+                        {
+                            match crate::banks::save_file(
+                                self.device,
+                                self.device_id,
+                                *bank,
+                                payload,
+                                &path,
+                            ) {
+                                Ok(()) => self.log.info(format!("saved {}", path.display())),
+                                Err(err) => self.log.error(err),
+                            }
+                        }
+                    });
+                }
+
+                ui.add_space(8.0);
+                ui.weak(format!("{} banks · record size varies", spec.count));
+            });
+
+        if self.confirm_bank_write
+            && let Some(file) = &self.bank_file
+        {
+            let mut open = true;
+            let mut confirmed = false;
+            let mut cancelled = false;
+            let target = self.bank_target;
+            egui::Window::new("Write bank record")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(ui.ctx(), |ui| {
+                    ui.label(format!(
+                        "Write {} ({} bytes) into bank {target}?",
+                        file.path.display(),
+                        file.payload.len()
+                    ));
+                    ui.label(
+                        RichText::new("This overwrites the existing bank record.").color(DANGER),
+                    );
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Write").clicked() {
+                            confirmed = true;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            cancelled = true;
+                        }
+                    });
+                });
+            if confirmed {
+                let frame =
+                    crate::banks::write_frame(self.device, self.device_id, target, &file.payload);
+                match frame {
+                    Ok(bytes) => {
+                        self.send_message("import bank record", bytes);
+                        if let Some(read) =
+                            crate::banks::read_request(self.device, self.device_id, target)
+                        {
+                            self.send_message("verify bank record", read);
+                        }
+                    }
+                    Err(err) => self.log.error(err),
+                }
+                self.confirm_bank_write = false;
+            } else if cancelled || !open {
+                self.confirm_bank_write = false;
+            }
+        }
     }
 
     fn restore_modal(&mut self, ctx: &egui::Context) {

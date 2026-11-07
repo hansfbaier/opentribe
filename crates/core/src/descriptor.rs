@@ -140,6 +140,19 @@ pub struct SampleDirectory {
     pub length_offset: usize,
 }
 
+/// Bank-record protocol (kit/pattern banks).
+#[derive(Clone, Copy, Debug)]
+pub struct BankSpec {
+    /// Read opcode (`0x77`).
+    pub read_opcode: u8,
+    /// Write opcode (`0x78`).
+    pub write_opcode: u8,
+    /// Sub-opcode for bank 0; bank N uses `sub_base + N`.
+    pub sub_base: u8,
+    /// Number of banks.
+    pub count: usize,
+}
+
 /// Sample surface of a device (import/export slots).
 #[derive(Clone, Copy, Debug)]
 pub struct SampleSpec {
@@ -147,6 +160,8 @@ pub struct SampleSpec {
     pub slots: usize,
     /// Directory-read protocol, when the device has one.
     pub directory: Option<SampleDirectory>,
+    /// Bank-record protocol, when the device has banks.
+    pub banks: Option<BankSpec>,
     /// Notes shown under the sample grid (format, transfer status, limits).
     pub notes: &'static [&'static str],
 }

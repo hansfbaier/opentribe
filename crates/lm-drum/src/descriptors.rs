@@ -3,7 +3,7 @@
 // Sources: the vendor QSG data sheet and measurements on this
 // instrument. See PROVENANCE.md for the data lineage.
 
-use tribe_core::descriptor::{Addr, Device, Evidence, Kind, Param, ReadSpec, SampleDirectory, SampleSpec, Slot, WriteGroup};
+use tribe_core::descriptor::{Addr, Device, Evidence, Kind, Param, ReadSpec, BankSpec, SampleDirectory, SampleSpec, Slot, WriteGroup};
 use tribe_core::sysex::WriteStyle;
 
 static LABELS_CLOCK_SOURCE: [&str; 4] = ["Internal", "MIDI DIN", "MIDI USB", "TRIG"];
@@ -94,7 +94,7 @@ static WRITES: [WriteGroup; 31] = [
     WriteGroup { id: "cc.claps", addr: Addr::Cc(90), slots: &[Slot::Param("tuning.claps")] },
 ];
 
-static SAMPLES: SampleSpec = SampleSpec { slots: 96, directory: Some(SampleDirectory { opcode: 0x77, sub: 0x30, reply: 0x78, record_len: 32, name_offset: 8, name_len: 16, length_offset: 28 }), notes: &["The device reports a variable-length SMPH directory (`77 30` -> one or more `78 30` replies). The 96-row placeholder is replaced by the directory contents after the read.", "Each SMPH record is 32 bytes: `SMPH`, name length 16, a 16-byte name, 4 reserved bytes, then the length in 16-bit samples.", "The directory is 7-in-8 packed per reply message; large directories arrive in several messages, each padded to an eight-byte boundary.", "Imported WAV audio is local to this app. Sending it to the device uses the separate `opentribe-lm-drum-sample` binary; pad assignment is not implemented.", "Per-sample limit is 1 MiB; importing keeps the WAV's original sample rate."] };
+static SAMPLES: SampleSpec = SampleSpec { slots: 96, directory: Some(SampleDirectory { opcode: 0x77, sub: 0x30, reply: 0x78, record_len: 32, name_offset: 8, name_len: 16, length_offset: 28 }), banks: Some(BankSpec { read_opcode: 0x77, write_opcode: 0x78, sub_base: 0x40, count: 16 }), notes: &["The device reports a variable-length SMPH directory (`77 30` -> one or more `78 30` replies). The 96-row placeholder is replaced by the directory contents after the read.", "Each SMPH record is 32 bytes: `SMPH`, name length 16, a 16-byte name, 4 reserved bytes, then the length in 16-bit samples.", "The directory is 7-in-8 packed per reply message; large directories arrive in several messages, each padded to an eight-byte boundary.", "Imported WAV audio is local to this app. Sending it to the device uses the separate `opentribe-lm-drum-sample` binary; pad assignment is not implemented.", "Per-sample limit is 1 MiB; importing keeps the WAV's original sample rate."] };
 
 pub static DEVICE: &Device = &Device {
     id: "lm-drum",

@@ -241,3 +241,23 @@ fn sample_directory_request_and_reply_match_the_wire() {
     assert_eq!(entries[0].name, "LM1-BASS");
     assert_eq!(entries[0].length_samples, 4458);
 }
+
+#[test]
+fn bank_import_frame_targets_the_selected_bank() {
+    let mut payload = [0u8; 497];
+    payload[0..4].copy_from_slice(b"\xff\x00\x7f\x0c");
+    payload[480..484].copy_from_slice(b"LM2\0");
+    let frame = tribe_core::banks::write_frame(DEVICE, 0x00, 15, &payload)
+        .unwrap_or_else(|err| panic!("{err}"));
+    let message = sysex::parse(DEVICE.model, DEVICE.family, &frame)
+        .unwrap_or_else(|| panic!("valid bank frame"));
+    assert_eq!(&message.body[..4], &[0x78, 0x4F, 0x00, 0x00]);
+    let (bank, decoded) = tribe_core::banks::parse_reply(DEVICE, message.body)
+        .unwrap_or_else(|| panic!("bank reply parses"));
+    assert_eq!(bank, 15);
+    assert_eq!(decoded, payload);
+
+    let request = tribe_core::banks::read_request(DEVICE, 0x00, 15)
+        .unwrap_or_else(|| panic!("bank read request"));
+    assert_eq!(sysex::hex(&request), "F0 00 20 32 00 01 28 00 77 4F F7");
+}

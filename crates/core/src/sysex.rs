@@ -192,6 +192,23 @@ pub fn unpack_7in8(data: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Pack bytes into the 7-in-8 format used by long reads and writes.
+pub fn pack_7in8(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len().div_ceil(7) * 8);
+    for block in data.chunks(7) {
+        let mut msb = 0u8;
+        for (index, &byte) in block.iter().enumerate() {
+            if byte & 0x80 != 0 {
+                msb |= 1 << index;
+            }
+        }
+        out.push(msb);
+        out.extend(block.iter().map(|byte| byte & 0x7F));
+        out.extend(std::iter::repeat_n(0, 7 - block.len()));
+    }
+    out
+}
+
 /// Does this byte slice carry the envelope for `model`?
 pub fn matches(model: [u8; 3], msg: &[u8]) -> bool {
     let header_len = 1 + MANUFACTURER.len() + model.len() + 1;

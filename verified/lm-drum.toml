@@ -100,6 +100,12 @@ name_offset = 8
 name_len = 16
 length_offset = 28
 
+[device.samples.banks]
+read_opcode = 0x77
+write_opcode = 0x78
+sub_base = 0x40
+count = 16
+
 
 
 # -------------------------------------------------------------- write groups
