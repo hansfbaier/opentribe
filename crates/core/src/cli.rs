@@ -50,7 +50,7 @@ pub fn main_for(device: &'static Device) -> i32 {
     };
     let result = match cli.command {
         Command::Gui => {
-            crate::run(device);
+            crate::run(device, cli.screenshot.as_deref());
             return 0;
         }
         Command::Help => {
@@ -140,18 +140,28 @@ enum Command {
 struct Cli {
     port: Option<String>,
     device_id: u8,
+    screenshot: Option<String>,
     command: Command,
 }
 
 fn parse(device: &'static Device, args: &[String]) -> Result<Cli, String> {
     let mut port = None;
     let mut device_id = 0;
+    let mut screenshot = None;
     let mut index = 0;
 
     while index < args.len() {
         match args[index].as_str() {
             "--port" => {
                 port = Some(args.get(index + 1).cloned().ok_or("--port needs a value")?);
+                index += 2;
+            }
+            "--screenshot" => {
+                screenshot = Some(
+                    args.get(index + 1)
+                        .cloned()
+                        .ok_or("--screenshot needs a value")?,
+                );
                 index += 2;
             }
             "--device-id" => {
@@ -169,6 +179,7 @@ fn parse(device: &'static Device, args: &[String]) -> Result<Cli, String> {
                 return Ok(Cli {
                     port,
                     device_id,
+                    screenshot,
                     command: Command::Help,
                 });
             }
@@ -176,6 +187,7 @@ fn parse(device: &'static Device, args: &[String]) -> Result<Cli, String> {
                 return Ok(Cli {
                     port,
                     device_id,
+                    screenshot,
                     command: Command::Version,
                 });
             }
@@ -190,6 +202,7 @@ fn parse(device: &'static Device, args: &[String]) -> Result<Cli, String> {
         return Ok(Cli {
             port,
             device_id,
+            screenshot,
             command: Command::Gui,
         });
     }
@@ -205,6 +218,14 @@ fn parse(device: &'static Device, args: &[String]) -> Result<Cli, String> {
         match rest[cursor].as_str() {
             "--json" => json_flag = true,
             "--dry-run" => dry_run = true,
+            "--screenshot" => {
+                screenshot = Some(
+                    rest.get(cursor + 1)
+                        .ok_or("--screenshot needs a value")?
+                        .to_string(),
+                );
+                cursor += 1;
+            }
             "--duration-ms" => {
                 let text = rest.get(cursor + 1).ok_or("--duration-ms needs a value")?;
                 let value: u64 = text
@@ -217,6 +238,7 @@ fn parse(device: &'static Device, args: &[String]) -> Result<Cli, String> {
                 return Ok(Cli {
                     port,
                     device_id,
+                    screenshot,
                     command: Command::Help,
                 });
             }
@@ -273,9 +295,13 @@ fn parse(device: &'static Device, args: &[String]) -> Result<Cli, String> {
     }
 
     validate_ids(device, &command)?;
+    if screenshot.is_some() && command != Command::Gui {
+        return Err("--screenshot only makes sense with the GUI (no command)".to_string());
+    }
     Ok(Cli {
         port,
         device_id,
+        screenshot,
         command,
     })
 }
@@ -301,12 +327,18 @@ fn validate_ids(device: &Device, command: &Command) -> Result<(), String> {
 }
 
 fn help(device: &'static Device) -> String {
-    let bin = format!("opentribe-{}", device.id);
+    // Name the binary the user actually ran: the default `opentribe` binary and
+    // the per-device binaries (`opentribe-lm-drum`, …) share this shell.
+    let bin = program_name().unwrap_or_else(|| format!("opentribe-{}", device.id));
+    help_named(device, &bin)
+}
+
+fn help_named(device: &'static Device, bin: &str) -> String {
     format!(
         "{name} {version} — opentribe controller\n\
          \n\
          Usage:\n  \
-         {bin} [--port <substring>] [--device-id <0-127>] [command]\n\
+         {bin} [--port <substring>] [--device-id <0-127>] [--screenshot <file.png>] [command]\n\
          \n\
          With no command the GUI starts.\n\
          \n\
@@ -325,12 +357,22 @@ fn help(device: &'static Device) -> String {
          \n\
          Flags:\n  \
          --port <substring>         pick a port by name (default: {hint})\n  \
-         --device-id <0-127>        SysEx device id (default 0)\n",
+         --device-id <0-127>        SysEx device id (default 0)\n  \
+         --screenshot <file.png>    start the GUI, save the window after ~120 frames and exit\n",
         name = device.name,
         version = VERSION,
         bin = bin,
         hint = device.port_hint,
     )
+}
+
+/// The file stem of the program that was invoked (e.g. `opentribe`).
+fn program_name() -> Option<String> {
+    std::env::args()
+        .next()
+        .as_deref()
+        .and_then(|arg| std::path::Path::new(arg).file_stem())
+        .map(|stem| stem.to_string_lossy().into_owned())
 }
 
 // ------------------------------------------------------------------ session
@@ -1209,6 +1251,22 @@ mod tests {
     }
 
     #[test]
+    fn screenshot_flag_starts_the_gui_and_needs_a_value() {
+        let cli = parse(&DEVICE, &args(&["--screenshot", "shot.png"]))
+            .unwrap_or_else(|_| panic!("parses"));
+        assert_eq!(cli.command, Command::Gui);
+        assert_eq!(cli.screenshot.as_deref(), Some("shot.png"));
+
+        let cli = parse(&DEVICE, &args(&["gui", "--screenshot", "shot.png"]))
+            .unwrap_or_else(|_| panic!("parses"));
+        assert_eq!(cli.command, Command::Gui);
+        assert_eq!(cli.screenshot.as_deref(), Some("shot.png"));
+
+        assert!(parse(&DEVICE, &args(&["--screenshot"])).is_err());
+        assert!(parse(&DEVICE, &args(&["--screenshot", "shot.png", "read"])).is_err());
+    }
+
+    #[test]
     fn usage_errors_are_reported() {
         assert!(parse(&DEVICE, &args(&["get"])).is_err());
         assert!(parse(&DEVICE, &args(&["set", "clock.source"])).is_err());
@@ -1322,7 +1380,7 @@ mod tests {
 
     #[test]
     fn help_mentions_every_command() {
-        let text = help(&DEVICE);
+        let text = help_named(&DEVICE, "opentribe-test");
         for needle in [
             "gui",
             "list-ports",

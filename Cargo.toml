@@ -1,3 +1,14 @@
+[package]
+name = "opentribe"
+description = "Portable controller for the Behringer LM DRUM (default opentribe app)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "opentribe"
+path = "src/main.rs"
+
 [workspace]
 members = ["crates/core", "crates/poly-d", "crates/lm-drum", "xtask"]
 resolver = "3"
@@ -9,12 +20,16 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 eframe = { version = "0.37", default-features = false, features = [
-    "glow",
+    "wgpu",
     "default_fonts",
     "wayland",
     "x11",
 ] }
 midir = "0.10"
+
+[dependencies]
+tribe-core = { path = "crates/core" }
+tribe-lm-drum = { path = "crates/lm-drum" }
 
 [profile.release]
 opt-level = 2

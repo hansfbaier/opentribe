@@ -79,9 +79,13 @@ sudo apt-get install libasound2-dev pkg-config libxkbcommon-dev
 Build and run the GUI (it auto-selects the port and reads the settings):
 
 ```sh
-cargo run --release -p tribe-poly-d      # binary: opentribe-poly-d
-cargo run --release -p tribe-lm-drum     # binary: opentribe-lm-drum
+cargo run --release                     # binary: opentribe — the LM DRUM controller
+cargo run --release -p tribe-poly-d     # binary: opentribe-poly-d
+cargo run --release -p tribe-lm-drum    # binary: opentribe-lm-drum
 ```
+
+The renderer is wgpu (DX12/Vulkan with a software fallback), so the GUI also
+runs on machines without OpenGL drivers and on plain Linux desktops.
 
 With no arguments the GUI starts. The app never writes during connect; edits are sent when
 **auto-apply** is on, or in batches with **Send all**.
@@ -108,6 +112,7 @@ opentribe-lm-drum mcp
 | `--device-id <0-127>` | SysEx device ID |
 | `--json` | machine-readable output for `params`, `read`, `get`, `monitor` |
 | `--dry-run` | print the message without opening the device |
+| `--screenshot <file.png>` | start the GUI, save the window's picture after ~120 frames and exit |
 
 `set` accepts numbers, enum labels (case-insensitive) and `on`/`off`, prints the exact `tx`
 bytes and the `rx` ACK, and reads the settings block first so the other fields of the same
