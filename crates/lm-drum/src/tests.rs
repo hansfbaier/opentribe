@@ -218,3 +218,26 @@ fn write_addresses_are_unique() {
     keys.dedup();
     assert_eq!(keys.len(), count, "duplicate write address");
 }
+
+#[test]
+fn sample_directory_request_and_reply_match_the_wire() {
+    assert_eq!(
+        descriptor::slot_list_request(DEVICE, 0x00)
+            .map(|bytes| sysex::hex(&bytes))
+            .as_deref(),
+        Some("F0 00 20 32 00 01 28 00 77 30 F7")
+    );
+
+    let mut record = [0u8; 32];
+    record[0..4].copy_from_slice(b"SMPH");
+    record[4..8].copy_from_slice(&16u32.to_le_bytes());
+    record[8..19].copy_from_slice(b"LM1-BASS\0\0\0");
+    record[28..32].copy_from_slice(&4458u32.to_le_bytes());
+    let mut body = vec![0x78, 0x30, 0x00, 0x00];
+    body.extend(crate::sample::pack_7in8(&record));
+    let entries = descriptor::apply_slot_list(DEVICE, &body)
+        .unwrap_or_else(|| panic!("directory reply parses"));
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].name, "LM1-BASS");
+    assert_eq!(entries[0].length_samples, 4458);
+}

@@ -112,11 +112,41 @@ pub struct ReadSpec {
     pub block_len: usize,
 }
 
+/// One entry in the device's sample directory.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SampleEntry {
+    /// Name as stored in the device, trailing padding removed.
+    pub name: String,
+    /// Length in 16-bit samples (the SMPH length field).
+    pub length_samples: u32,
+}
+
+/// How a device reports its sample directory.
+#[derive(Clone, Copy, Debug)]
+pub struct SampleDirectory {
+    /// Request opcode (`0x77`).
+    pub opcode: u8,
+    /// Request sub-opcode (`0x30`).
+    pub sub: u8,
+    /// Reply opcode (`0x78`).
+    pub reply: u8,
+    /// Size of one SMPH record in the unpacked stream.
+    pub record_len: usize,
+    /// Offset of the name inside one record.
+    pub name_offset: usize,
+    /// Name field length, including NUL/space padding.
+    pub name_len: usize,
+    /// Offset of the u32 length field inside one record.
+    pub length_offset: usize,
+}
+
 /// Sample surface of a device (import/export slots).
 #[derive(Clone, Copy, Debug)]
 pub struct SampleSpec {
-    /// Number of sample slots the instrument holds.
+    /// Placeholder slot count shown before a directory read.
     pub slots: usize,
+    /// Directory-read protocol, when the device has one.
+    pub directory: Option<SampleDirectory>,
     /// Notes shown under the sample grid (format, transfer status, limits).
     pub notes: &'static [&'static str],
 }
@@ -347,21 +377,57 @@ pub fn read_request(device: &Device, device_id: u8) -> Option<Vec<u8>> {
     ))
 }
 
-/// Request the sample slot list (which slots are empty, which hold a sample).
-///
-/// The read-first seam: no device has a captured slot-list read yet, so this
-/// returns `None` and the UI honestly reports the gap. When the frames are
-/// captured (vendor app traffic or USB), build the request here per device.
-pub fn slot_list_request(_device: &Device, _device_id: u8) -> Option<Vec<u8>> {
-    None
+/// Request the sample directory (names and lengths of the samples on the
+/// device).
+pub fn slot_list_request(device: &Device, device_id: u8) -> Option<Vec<u8>> {
+    let directory = device.samples?.directory?;
+    Some(sysex::op_message(
+        device.model,
+        device.family,
+        device_id,
+        directory.opcode,
+        &[directory.sub],
+    ))
 }
 
-/// Parse a sample slot-list reply into per-slot filled flags.
+/// Parse one packed sample-directory reply.
 ///
-/// See [`slot_list_request`]; returns `None` until the reply frame is
-/// captured. When it is, map the payload to `Vec<bool>` here.
-pub fn apply_slot_list(_device: &Device, _body: &[u8]) -> Option<Vec<bool>> {
-    None
+/// The device splits a large directory over several `0x78 0x30` messages, each
+/// independently 7-in-8 packed and padded to an eight-byte boundary. A caller
+/// concatenates the returned entries across messages.
+pub fn apply_slot_list(device: &Device, body: &[u8]) -> Option<Vec<SampleEntry>> {
+    let directory = device.samples?.directory?;
+    let payload = body.strip_prefix(&[directory.reply, directory.sub])?;
+    // The reply carries a three-byte sub-header: opcode, sub-opcode, 00 00.
+    let packed = payload.strip_prefix(&[0x00, 0x00])?;
+    let decoded = sysex::unpack_7in8(packed);
+    let complete = decoded.len() / directory.record_len;
+    if complete == 0 {
+        return Some(Vec::new());
+    }
+
+    let mut entries = Vec::with_capacity(complete);
+    for chunk in decoded.chunks_exact(directory.record_len).take(complete) {
+        if chunk.get(0..4) != Some(b"SMPH") {
+            return None;
+        }
+        let name_end = (directory.name_offset + directory.name_len).min(chunk.len());
+        let name = String::from_utf8_lossy(&chunk[directory.name_offset..name_end])
+            .trim_end_matches('\0')
+            .trim_end()
+            .to_string();
+        let length_end = (directory.length_offset + 4).min(chunk.len());
+        if length_end < directory.length_offset + 4 {
+            return None;
+        }
+        let length_samples =
+            u32::from_le_bytes(chunk[directory.length_offset..length_end].try_into().ok()?);
+        entries.push(SampleEntry {
+            name,
+            length_samples,
+        });
+    }
+    Some(entries)
 }
 
 /// Query the DFU operation mode.

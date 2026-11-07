@@ -54,8 +54,21 @@ struct DeviceCfg {
 #[serde(deny_unknown_fields)]
 struct SamplesCfg {
     slots: usize,
+    directory: Option<DirectoryCfg>,
     #[serde(default)]
     notes: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DirectoryCfg {
+    opcode: u8,
+    sub: u8,
+    reply: u8,
+    record_len: usize,
+    name_offset: usize,
+    name_len: usize,
+    length_offset: usize,
 }
 
 #[derive(Deserialize)]
@@ -352,6 +365,22 @@ fn validate(overlay: &Overlay) -> Result<(), String> {
             samples.slots
         ));
     }
+    if let Some(directory) = overlay
+        .device
+        .samples
+        .as_ref()
+        .and_then(|samples| samples.directory.as_ref())
+    {
+        if directory.record_len == 0 {
+            return Err("samples.directory: record_len is zero".to_string());
+        }
+        if directory.name_offset + directory.name_len > directory.record_len {
+            return Err("samples.directory: name field exceeds the record".to_string());
+        }
+        if directory.length_offset + 4 > directory.record_len {
+            return Err("samples.directory: length field exceeds the record".to_string());
+        }
+    }
     Ok(())
 }
 
@@ -381,10 +410,10 @@ fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
         "// instrument. See PROVENANCE.md for the data lineage."
     );
     let _ = writeln!(out);
-    let sample_spec = if device.samples.is_some() {
-        "SampleSpec, "
-    } else {
-        ""
+    let sample_spec = match device.samples.as_ref().and_then(|s| s.directory.as_ref()) {
+        Some(_) => "SampleDirectory, SampleSpec, ",
+        None if device.samples.is_some() => "SampleSpec, ",
+        None => "",
     };
     let _ = writeln!(
         out,
@@ -520,9 +549,22 @@ fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
     };
 
     if let Some(samples) = &device.samples {
+        let directory = match &samples.directory {
+            Some(directory) => format!(
+                "Some(SampleDirectory {{ opcode: {:#04X}, sub: {:#04X}, reply: {:#04X}, record_len: {}, name_offset: {}, name_len: {}, length_offset: {} }})",
+                directory.opcode,
+                directory.sub,
+                directory.reply,
+                directory.record_len,
+                directory.name_offset,
+                directory.name_len,
+                directory.length_offset,
+            ),
+            None => "None".to_string(),
+        };
         let _ = writeln!(
             out,
-            "static SAMPLES: SampleSpec = SampleSpec {{ slots: {}, notes: &[{}] }};",
+            "static SAMPLES: SampleSpec = SampleSpec {{ slots: {}, directory: {directory}, notes: &[{}] }};",
             samples.slots,
             string_slice(&samples.notes)
         );

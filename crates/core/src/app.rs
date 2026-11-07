@@ -48,6 +48,8 @@ pub struct TribeApp {
     confirm_restore: bool,
     settings_loaded: bool,
     samples: Option<SampleBank>,
+    /// Entries accumulated from the multi-message `77 30` directory reply.
+    sample_directory: Vec<descriptor::SampleEntry>,
 }
 
 impl TribeApp {
@@ -81,6 +83,7 @@ impl TribeApp {
             confirm_restore: false,
             settings_loaded: false,
             samples: device.samples.map(|spec| SampleBank::new(spec.slots)),
+            sample_directory: Vec::new(),
         };
 
         cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
@@ -214,12 +217,11 @@ impl TribeApp {
             return;
         }
         match descriptor::slot_list_request(self.device, self.device_id) {
-            Some(bytes) => self.send_message("read sample slot list", bytes),
-            None => self.log.info(
-                "sample slot list read: the request frame is not captured yet, \
-                 so slots stay 'not read' — record the vendor app's traffic while \
-                 it opens the sample screen (or over USB) to settle it",
-            ),
+            Some(bytes) => {
+                self.sample_directory.clear();
+                self.send_message("read sample directory", bytes);
+            }
+            None => self.log.info("this device has no sample-directory read"),
         }
     }
 
@@ -328,16 +330,13 @@ impl TribeApp {
             };
         };
 
-        if let Some(filled) = descriptor::apply_slot_list(self.device, message.body) {
-            let total = filled.len();
-            let count = filled.iter().filter(|flag| **flag).count();
+        if let Some(entries) = descriptor::apply_slot_list(self.device, message.body) {
+            self.sample_directory.extend(entries);
+            let total = self.sample_directory.len();
             if let Some(bank) = self.samples.as_mut() {
-                bank.mark_read(&filled);
+                bank.mark_read(&self.sample_directory);
             }
-            return (
-                Dir::Rx,
-                format!("sample slot list · {count} of {total} slots filled"),
-            );
+            return (Dir::Rx, format!("sample directory · {total} samples"));
         }
 
         if let Some(block) = message.body.strip_prefix(&[sysex::op::SETTINGS_BLOCK]) {

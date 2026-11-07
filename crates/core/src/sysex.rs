@@ -176,6 +176,22 @@ pub struct Message<'a> {
     pub body: &'a [u8],
 }
 
+/// Unpack the 7-in-8 format used by long reads: one MSB byte followed by up to
+/// seven 7-bit low bytes. Bit `i` of the MSB byte is bit 7 of low byte `i`
+/// (LSB-first). A trailing partial group is decoded as far as it goes.
+pub fn unpack_7in8(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len().div_ceil(8) * 7);
+    for group in data.chunks(8) {
+        let Some((&msb, lows)) = group.split_first() else {
+            break;
+        };
+        for (index, &low) in lows.iter().enumerate().take(7) {
+            out.push((low & 0x7F) | (((msb >> index) & 1) << 7));
+        }
+    }
+    out
+}
+
 /// Does this byte slice carry the envelope for `model`?
 pub fn matches(model: [u8; 3], msg: &[u8]) -> bool {
     let header_len = 1 + MANUFACTURER.len() + model.len() + 1;
@@ -337,6 +353,18 @@ mod tests {
         assert_eq!(bytes[7], 0x7F, "device ID is clamped to 7 bits");
         assert_eq!(&bytes[8..], &[0x12, 0x00, 0x7F, 0xF7]);
         assert!(bytes[1..bytes.len() - 1].iter().all(|b| *b < 0x80));
+    }
+
+    #[test]
+    fn unpack_7in8_restores_captured_directory_bytes() {
+        // First packed group of the captured `77 30` reply: SMPH + name length.
+        let packed = [0x00, 0x53, 0x4D, 0x50, 0x48, 0x10, 0x00, 0x00];
+        assert_eq!(unpack_7in8(&packed), b"SMPH\x10\x00\x00");
+        // Bit 0 of the MSB byte carries bit 7 of the first low byte.
+        assert_eq!(
+            unpack_7in8(&[0x01, 0x01, 0x02, 0x03]),
+            vec![0x81, 0x02, 0x03]
+        );
     }
 
     #[test]
