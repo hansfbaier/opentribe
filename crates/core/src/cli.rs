@@ -1203,6 +1203,7 @@ mod tests {
         channel_param: None,
         params: &PARAMS,
         writes: &WRITES,
+        samples: None,
         rejected: &[],
         reject_codes: &[],
         notes: &[],

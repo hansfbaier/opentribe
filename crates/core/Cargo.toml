@@ -7,6 +7,8 @@ license.workspace = true
 
 [dependencies]
 eframe.workspace = true
+hound = "3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 midir.workspace = true
+rfd = "0.15"
 serde_json = "1"

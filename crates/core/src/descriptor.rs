@@ -112,6 +112,15 @@ pub struct ReadSpec {
     pub block_len: usize,
 }
 
+/// Sample surface of a device (import/export slots).
+#[derive(Clone, Copy, Debug)]
+pub struct SampleSpec {
+    /// Number of sample slots the instrument holds.
+    pub slots: usize,
+    /// Notes shown under the sample grid (format, transfer status, limits).
+    pub notes: &'static [&'static str],
+}
+
 /// One editable parameter.
 #[derive(Clone, Copy, Debug)]
 pub struct Param {
@@ -152,6 +161,8 @@ pub struct Device {
     pub channel_param: Option<&'static str>,
     pub params: &'static [Param],
     pub writes: &'static [WriteGroup],
+    /// Sample surface (import/export slots), when the instrument has one.
+    pub samples: Option<&'static SampleSpec>,
     /// Packets that are documented but rejected by the firmware.
     pub rejected: &'static [(&'static str, u8)],
     /// ACK payload codes that mean "rejected" on this device.
@@ -554,6 +565,7 @@ mod tests {
         channel_param: Some("channel.tx"),
         params: &PARAMS,
         writes: &WRITES,
+        samples: None,
         rejected: &[],
         reject_codes: &[0x05],
         notes: &[],

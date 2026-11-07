@@ -77,6 +77,7 @@ pub static DEVICE: &Device = &Device {
     channel_param: Some("channel.tx"),
     params: &PARAMS,
     writes: &WRITES,
+    samples: None,
     rejected: &[("Sequencer auto-sync", 0x1D), ("Assign value", 0x1F)],
     reject_codes: &[0x05],
     notes: &["Framing: the QSG form F0 00 20 32 00 01 0C 00 <packet> <payload> F7 is accepted. The SynthTribe 0x78 long envelope is rejected with ACK code 5, so it stays an experiment only.", "Every write is answered: 01 00 00 = accepted, 01 00 05 = rejected (unknown packet, out-of-range value, wrong framing).", "Read-back: 0x75 returns 0x76 plus a 25-byte block. Every offset was measured by writing a distinct value and diffing the next read (see verified/poly-d-measurements.md).", "Local keyboard mode (0x2F) and accent threshold (0x1C) are exercised on hardware; both are absent from the QSG", "The 0x77 reads SynthTribe uses are rejected as well; 0x75 is the working read."],

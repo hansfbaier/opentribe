@@ -3,7 +3,7 @@
 // Sources: the vendor QSG data sheet and measurements on this
 // instrument. See PROVENANCE.md for the data lineage.
 
-use tribe_core::descriptor::{Addr, Device, Evidence, Kind, Param, ReadSpec, Slot, WriteGroup};
+use tribe_core::descriptor::{Addr, Device, Evidence, Kind, Param, ReadSpec, SampleSpec, Slot, WriteGroup};
 use tribe_core::sysex::WriteStyle;
 
 static LABELS_CLOCK_SOURCE: [&str; 4] = ["Internal", "MIDI DIN", "MIDI USB", "TRIG"];
@@ -94,6 +94,8 @@ static WRITES: [WriteGroup; 31] = [
     WriteGroup { id: "cc.claps", addr: Addr::Cc(90), slots: &[Slot::Param("tuning.claps")] },
 ];
 
+static SAMPLES: SampleSpec = SampleSpec { slots: 96, notes: &["Slot count (96) is an estimate; the transfer frames to and from the instrument have not been captured yet.", "Import decodes a WAV file into the selected slot (any encoding, converted to mono 16-bit); export writes a slot back to a WAV file.", "Factory samples cannot be read back yet, and sending a sample to the instrument is not implemented — recording the vendor app's USB traffic during a sample import/export settles the protocol.", "Per-slot length and sample-rate limits are unverified; imported audio keeps its original sample rate."] };
+
 pub static DEVICE: &Device = &Device {
     id: "lm-drum",
     name: "LM DRUM",
@@ -106,6 +108,7 @@ pub static DEVICE: &Device = &Device {
     channel_param: Some("channel.rx"),
     params: &PARAMS,
     writes: &WRITES,
+    samples: Some(&SAMPLES),
     rejected: &[],
     reject_codes: &[],
     notes: &["Measured on firmware 1.1.7: 0x75 -> 0x76 with a 108-byte block. Block offsets were mapped one packet at a time by writing, reading and restoring.", "ACK codes are per packet: silence means unknown packet or sub-index, 01 00 00 means applied, and 01 00 01 is both a rejection and the answer to every applied 0x0E write.", "Two-field frame: 28 <a> <b> writes block offsets 9 and 10 in one message; it is not a sub-index container.", "2C <sub> <value> writes block offsets 32-34; the value is a 0-based voice index in the manual voice order.", "1A <value> writes block offset 6 (clock rate); on firmware 1.1.7 only 99-104 are accepted.", "74 0A <value> writes block offset 54 (sample mode); only 0 and 1 are accepted.", "0E sub 01 writes TX then RX (offsets 8/7); other sub values tested (2-5) wrote TX only. No writer found for the USB in/out channels at offsets 11/12.", "74 <sub> <value> addresses single switches: sub 09 -> offset 35, 0B -> offset 2, 0C -> offset 31.", "76 is not accepted as a bulk write: 76 <108 bytes> produced no ACK and no block change.", "Note-map slots (packet 29) are 16 bytes at offsets 14-29; the voice behind each slot is not published, so slots are named by position.", "Settings persist across a power cycle: accent threshold written 109 -> 100 survived a power-cycle; no commit command is needed.", "Parameters tagged vendor-named have a measured wire address and a name taken from the vendor configuration; their meaning is not behaviourally confirmed."],

@@ -49,7 +49,9 @@ transcripts are in [`verified/`](verified/).
 
 LM DRUM coverage: filter cutoff and 16 voice tunings (documented CCs), accent threshold, note
 map, MIDI channel, MIDI through, clock source and rate, end mode, three trigger outputs and the
-`74` switches (auto save, beep, random closed hat, sample mode).
+`74` switches (auto save, beep, random closed hat, sample mode). The **Samples** tab imports and
+exports WAV files into the sample slots locally (mono 16-bit, any WAV encoding `hound` reads);
+transfer to and from the instrument waits for captured transfer frames.
 
 ## Screenshots
 
@@ -209,7 +211,10 @@ included or read at build time; `xtask` takes only the hand-written overlays und
 
 - Finish the LM DRUM gaps: clock polarity, flags 55/72/73, the voice-channel map writer, and the
   note-slot → voice order.
-- Sequencer and sample surfaces once their transfer frames are captured.
+- Capture the sample transfer frames (e.g. by recording USB traffic while the vendor app imports
+  or exports a sample) and implement real transfer to and from the instrument; the local
+  import/export screen already exists.
+- Sequencer surface once its transfer frames are captured.
 - Next instrument as another descriptor crate.
 
 ## License

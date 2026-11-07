@@ -47,6 +47,15 @@ struct DeviceCfg {
     #[serde(default)]
     reject_codes: Vec<u8>,
     read: Option<ReadCfg>,
+    samples: Option<SamplesCfg>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SamplesCfg {
+    slots: usize,
+    #[serde(default)]
+    notes: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -335,6 +344,14 @@ fn validate(overlay: &Overlay) -> Result<(), String> {
     if overlay.device.styles.is_empty() {
         return Err("device lists no write styles".to_string());
     }
+    if let Some(samples) = &overlay.device.samples
+        && !(1..=999).contains(&samples.slots)
+    {
+        return Err(format!(
+            "samples: slots {} is outside 1..=999",
+            samples.slots
+        ));
+    }
     Ok(())
 }
 
@@ -364,9 +381,14 @@ fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
         "// instrument. See PROVENANCE.md for the data lineage."
     );
     let _ = writeln!(out);
+    let sample_spec = if device.samples.is_some() {
+        "SampleSpec, "
+    } else {
+        ""
+    };
     let _ = writeln!(
         out,
-        "use tribe_core::descriptor::{{Addr, Device, Evidence, Kind, Param, ReadSpec, Slot, WriteGroup}};"
+        "use tribe_core::descriptor::{{Addr, Device, Evidence, Kind, Param, ReadSpec, {sample_spec}Slot, WriteGroup}};"
     );
     let _ = writeln!(out, "use tribe_core::sysex::WriteStyle;");
     let _ = writeln!(out);
@@ -497,6 +519,16 @@ fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
         )
     };
 
+    if let Some(samples) = &device.samples {
+        let _ = writeln!(
+            out,
+            "static SAMPLES: SampleSpec = SampleSpec {{ slots: {}, notes: &[{}] }};",
+            samples.slots,
+            string_slice(&samples.notes)
+        );
+        let _ = writeln!(out);
+    }
+
     let _ = writeln!(out, "pub static DEVICE: &Device = &Device {{");
     let _ = writeln!(out, "    id: {:?},", device.id);
     let _ = writeln!(out, "    name: {:?},", device.name);
@@ -509,6 +541,11 @@ fn emit(overlay: &Overlay, overlay_name: &str) -> Result<String, String> {
     let _ = writeln!(out, "    channel_param: {channel},");
     let _ = writeln!(out, "    params: &PARAMS,");
     let _ = writeln!(out, "    writes: &WRITES,");
+    let samples = match &device.samples {
+        Some(_) => "Some(&SAMPLES)",
+        None => "None",
+    };
+    let _ = writeln!(out, "    samples: {samples},");
     let _ = writeln!(out, "    rejected: {rejected},");
     let _ = writeln!(out, "    reject_codes: &[{}],", reject_codes);
     let _ = writeln!(out, "    notes: &[{}],", string_slice(&overlay.notes));

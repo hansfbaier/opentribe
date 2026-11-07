@@ -9,9 +9,11 @@ use egui::RichText;
 use crate::descriptor::{self, Device, Evidence, Kind, Param, Values};
 use crate::log::{Dir, Log};
 use crate::midi::{self, MidiHub};
+use crate::samples::SampleBank;
 use crate::sysex::{self, WriteStyle};
 use crate::widgets::{self, DANGER, HEADING, MUTED, OK, WARN};
 
+const SAMPLE_TAB: &str = "Samples";
 const PLAY_TAB: &str = "Play & test";
 const CONSOLE_TAB: &str = "Console";
 const REFERENCE_TAB: &str = "Reference";
@@ -45,6 +47,7 @@ pub struct TribeApp {
     modwheel: u8,
     confirm_restore: bool,
     settings_loaded: bool,
+    samples: Option<SampleBank>,
 }
 
 impl TribeApp {
@@ -77,6 +80,7 @@ impl TribeApp {
             modwheel: 0,
             confirm_restore: false,
             settings_loaded: false,
+            samples: device.samples.map(|spec| SampleBank::new(spec.slots)),
         };
 
         cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
@@ -102,7 +106,12 @@ impl TribeApp {
     }
 
     fn tab_titles(&self) -> Vec<&'static str> {
-        let mut titles = self.param_tabs.clone();
+        let mut titles = Vec::new();
+        // The sample surface is the default view when the device has one.
+        if self.device.samples.is_some() {
+            titles.push(SAMPLE_TAB);
+        }
+        titles.extend(self.param_tabs.iter().copied());
         titles.push(PLAY_TAB);
         titles.push(CONSOLE_TAB);
         titles.push(REFERENCE_TAB);
@@ -610,6 +619,10 @@ impl TribeApp {
         if let Some(title) = titles.get(self.tab).copied() {
             if self.param_tabs.contains(&title) {
                 self.params_tab(ui, title);
+            } else if title == SAMPLE_TAB {
+                if let (Some(spec), Some(bank)) = (self.device.samples, self.samples.as_mut()) {
+                    crate::samples::samples_tab(ui, spec, bank, &mut self.log);
+                }
             } else if title == PLAY_TAB {
                 self.play_tab(ui);
             } else if title == CONSOLE_TAB {

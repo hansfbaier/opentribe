@@ -9,6 +9,7 @@ pub mod cli;
 pub mod descriptor;
 pub mod log;
 pub mod midi;
+pub mod samples;
 pub mod screenshot;
 pub mod sysex;
 pub mod widgets;
