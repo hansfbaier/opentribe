@@ -4,7 +4,7 @@
 
 **Descriptor-driven controllers for Behringer / Music Tribe synthesizers.**
 
-POLY D and LM DRUM today — a new instrument is a descriptor, not a new app.
+POLY D, LM DRUM and PRO-800 today — a new descriptor device is data, not a new app.
 
 [![ci](https://github.com/hansfbaier/opentribe/actions/workflows/ci.yml/badge.svg)](https://github.com/hansfbaier/opentribe/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
@@ -15,10 +15,11 @@ POLY D and LM DRUM today — a new instrument is a descriptor, not a new app.
 
 </div>
 
-`opentribe` drives the global SysEx parameter map of Behringer synthesizers from a single
-`egui` application per instrument, with a shared core. It writes settings, reads them back from
-the 108/25-byte parameter block, logs every message with its ACK, and ships a headless CLI and
-an MCP server so scripts and agents can use the same descriptors.
+`opentribe` drives Behringer synthesizers from one `egui` application per instrument, with a
+shared core. Two device styles share the shell: descriptor-driven parameter maps (POLY D and
+LM DRUM) and whole-patch editors (PRO-800), which read a program, edit bytes and write the
+program back. Both log every message, expose a headless CLI, and keep an evidence tag on every
+fact. The descriptor devices also speak MCP.
 
 Everything marked *verified* below was written to hardware, read back, and restored — the raw
 transcripts are in [`verified/`](verified/).
@@ -29,6 +30,8 @@ transcripts are in [`verified/`](verified/).
 
 - **Descriptors, not screens.** Parameters, write groups, read-back offsets, tabs and sections
   are data. `tribe-core` renders them; a device crate only supplies facts.
+- **Whole patches where the device needs them.** The PRO-800 has no per-parameter write
+  frame, so its editor mutates one program record and sends the whole record back.
 - **Read-modify-write.** `set` reads the block first, so changing one field never clobbers the
   others that share its message.
 - **ACK-aware.** Every write's acknowledgement is decoded and shown; per-device rejection rules
@@ -46,6 +49,7 @@ transcripts are in [`verified/`](verified/).
 | --- | --- | --- | --- | --- |
 | **POLY D** | 1.1.3 | 21 write groups, 25-byte read-back block | none published | Global, clock, MIDI routing, play test |
 | **LM DRUM** | 1.1.7 | 31 write groups, 108-byte read-back block | CC 74–90 | Voices, note map, channel, routing, switches, play test |
+| **PRO-800** | 1.4.6 | 400 whole-patch programs (`77`/`78`), 40-byte global block | Swumpf editor map, live CC | Editor, librarian, globals read, console |
 
 LM DRUM coverage: filter cutoff and 16 voice tunings (documented CCs), accent threshold, note
 map, MIDI channel, MIDI through, clock source and rate, end mode, three trigger outputs and the
@@ -56,6 +60,18 @@ into the slots locally (mono 16-bit, any WAV encoding `hound` reads); transfer t
 the instrument waits for captured transfer frames. The **Note map** tab loads and saves its 16
 slots as a plain-text file (`slotNN = note` lines, `#` comments, numbers or note names such as
 `C2`/`C#2`/`Db2`); loading fills the sliders and stages the change, and **Send all** writes it.
+
+PRO-800 coverage: the **Patch** tab is a port of the Swumpf browser editor (v114): oscillators
+A and B, noise, filter, both envelopes, poly-mod, aftertouch, LFO-mod, unison and chord memory,
+glide, mod wheel/vibrato, pitch wheel and arpeggiator. Dragging a knob sends the same MIDI CC
+the browser editor sends, so a change is audible before it is stored; **Write** is a
+whole-patch read-modify-write, padded to 173 bytes, acknowledged, then read back and compared.
+**Clear slot** sends the no-payload delete frame and confirms the slot reads empty. The **Librarian** scans the four
+100-program banks, imports and exports `.syx`, and writes a backup with `manifest.csv`. The
+**Global** tab writes active voices, note priority and transpose and shows the other global
+fields read-only. Parameter offsets come from the Swumpf map and carry `vendor-named`; only the
+name field and the pitch-bend range are hardware-verified. Gates G2 and G3 in
+[`docs/spec-pro-800.md`](docs/spec-pro-800.md) still apply.
 
 ## Screenshots
 
@@ -71,6 +87,10 @@ slots as a plain-text file (`slotNN = note` lines, `#` comments, numbers or note
   <tr>
     <td><img src="docs/screenshots/lm-drum-notemap.png" alt="LM DRUM note map"><br><sub><b>LM DRUM</b> — 16 note slots, one write group, offsets 14–29</sub></td>
     <td><img src="docs/screenshots/lm-drum-play.png" alt="Play and test"><br><sub><b>Play &amp; test</b> — on-screen keyboard, bend, mod wheel, panic</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/pro-800-patch.png" alt="PRO-800 patch editor"><br><sub><b>PRO-800</b> — the Swumpf control surface, ported to egui</sub></td>
+    <td><img src="docs/screenshots/pro-800-library.png" alt="PRO-800 librarian"><br><sub><b>PRO-800</b> — 400-slot librarian, bank scan and <code>.syx</code> import</sub></td>
   </tr>
 </table>
 
@@ -88,6 +108,7 @@ Build and run the GUI (it auto-selects the port and reads the settings):
 cargo run --release                     # binary: opentribe — the LM DRUM controller
 cargo run --release -p tribe-poly-d     # binary: opentribe-poly-d
 cargo run --release -p tribe-lm-drum    # binary: opentribe-lm-drum
+cargo run --release -p tribe-pro-800    # binary: opentribe-pro-800
 ```
 
 The renderer is wgpu (DX12/Vulkan with a software fallback), so the GUI also
@@ -110,6 +131,26 @@ opentribe-lm-drum set trigger.main Cowbell
 opentribe-lm-drum send "74 09 01"
 opentribe-lm-drum monitor --json --duration-ms 1000
 opentribe-lm-drum mcp
+```
+
+The PRO-800 binary has its own commands around whole programs:
+
+```sh
+opentribe-pro-800 list-ports
+opentribe-pro-800 status --json
+opentribe-pro-800 slots --bank B
+opentribe-pro-800 dump B094 --out B094.syx
+opentribe-pro-800 backup --dir backups/pro800
+opentribe-pro-800 inspect --file B094.syx --json
+opentribe-pro-800 diff A000 B094
+opentribe-pro-800 store --file B094.syx --slot C010
+opentribe-pro-800 restore --dir backups/pro800
+opentribe-pro-800 delete --slot C010
+opentribe-pro-800 get filter.cutoff --slot B094
+opentribe-pro-800 set filter.cutoff 640 --slot B094
+opentribe-pro-800 globals
+opentribe-pro-800 globals-set global.note_priority high
+opentribe-pro-800 monitor --duration-ms 3000
 ```
 
 | Flag | Meaning |
@@ -262,7 +303,11 @@ included or read at build time; `xtask` takes only the hand-written overlays und
   or exports a sample) and implement real transfer to and from the instrument; the local
   import/export screen already exists.
 - Sequencer surface once its transfer frames are captured.
-- Next instrument as another descriptor crate.
+- PRO-800 next steps, per [`docs/spec-pro-800.md`](docs/spec-pro-800.md): run gate G2 for each
+  parameter (write a byte, read the PERF panel) and G3 for the global write frame. Until then
+  the editor shows the Swumpf map as `vendor-named` and offers no per-parameter CLI write that
+  claims more.
+- MCP tools for the PRO-800 binary, once the whole-patch operations have settled.
 
 ## License
 
@@ -273,5 +318,5 @@ Dual-licensed under either of
 
 at your option.
 
-"Behringer", "POLY D", "LM DRUM" and "Music Tribe" are trademarks of their owners. This project
+"Behringer", "POLY D", "LM DRUM", "PRO-800" and "Music Tribe" are trademarks of their owners. This project
 is not affiliated with or endorsed by the manufacturer.

@@ -10,7 +10,7 @@ name = "opentribe"
 path = "src/main.rs"
 
 [workspace]
-members = ["crates/core", "crates/poly-d", "crates/lm-drum", "crates/update", "xtask"]
+members = ["crates/core", "crates/poly-d", "crates/lm-drum", "crates/pro-800", "crates/update", "xtask"]
 resolver = "3"
 
 [workspace.package]

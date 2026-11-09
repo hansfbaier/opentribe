@@ -13,6 +13,8 @@ data files or assets are included, copied, linked or read at build time.
 | LM DRUM CC map (filter cutoff, 16 voice tunings) | Behringer LM DRUM user manual p. 27 | `QSG` |
 | LM DRUM settings read, 108-byte block layout, note map, channel, routing/switch frames, trigger-output value domain, packet-to-offset mapping | Measurements on an LM DRUM running firmware 1.1.7; trigger-output voice order cross-checked against manual p. 24 defaults | `verified` / `vendor-named` |
 | Envelope rules for protocol families, opcodes for mode/firmware/restore | Same measurements plus the MIDI System Exclusive specification | `verified` |
+| PRO-800 frame formats, 7-in-8 packing, name offset `0x96`, pitch-bend range at 171 | Read-only dumps and read-modify-write tests on a PRO-800 running 1.4.6; cross-checked against the Swumpf editor | `verified` |
+| PRO-800 patch parameter offsets, CC numbers and control layout | Swumpf PRO-800 editor v114 (third-party), transcribed into `crates/pro-800/src/params.rs`; see `devices/PRO-800/EXTERNAL-swumpf.md` in the research notebook | `vendor-named` |
 
 Transcripts: [`verified/poly-d-measurements.md`](verified/poly-d-measurements.md),
 [`verified/lm-drum-measurements.md`](verified/lm-drum-measurements.md).
@@ -32,16 +34,24 @@ Machine-readable device facts: [`verified/poly-d.toml`](verified/poly-d.toml),
   remaining settings carry the `vendor-named` tag: the wire address and value domain are
   measured, while the human name comes from the vendor configuration. Names never upgrade a
   packet to "verified" on their own.
-- UI text, colours, icons and layout are original. The screenshot in `docs/` is this
+- UI text, colours, icons and layout are original. The screenshots in `docs/` are this
   application.
+- The Swumpf editor is third-party documentation, not vendor material. Its HTML is not
+  shipped, parsed or read at build time; the offsets and CC numbers it documents are
+  transcribed as facts into `crates/pro-800/src/params.rs` and tagged `vendor-named`. Its
+  layout is a reference, not copied markup or assets.
 - No code was decompiled, disassembled or transcribed. The protocol is exercised over
   MIDI SysEx, which is an interoperability interface, using the vendor's published table.
+- `verified/pro-800-*.syx` are program dumps captured from the owner's instrument and one
+  captured global block. They are test fixtures that pin the 7-in-8 codec and the name field;
+  they are not vendor software, and `pro-800-init.syx` is a factory "Init Program" record used
+  as the editor's starting template.
 
 ## Dependencies
 
 All dependencies are permissively licensed and unmodified: `eframe`/`egui` (MIT OR
-Apache-2.0), `midir` (MIT), `serde`, `serde_json`, `toml` (MIT OR Apache-2.0). No vendored
-or patched third-party code.
+Apache-2.0), `midir` (MIT), `serde`, `serde_json`, `toml`, `sha2` (MIT OR Apache-2.0) and
+`rfd` (MIT). No vendored or patched third-party code.
 
 ## Names and marks
 

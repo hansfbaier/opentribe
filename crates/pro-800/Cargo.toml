@@ -1,0 +1,22 @@
+[package]
+name = "tribe-pro-800"
+description = "Behringer PRO-800 patch editor, librarian and controller"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "tribe_pro_800"
+path = "src/lib.rs"
+
+[[bin]]
+name = "opentribe-pro-800"
+path = "src/main.rs"
+
+[dependencies]
+eframe.workspace = true
+tribe-core = { path = "../core" }
+serde_json = "1"
+sha2 = "0.10"
+rfd = "0.15"
+image = { version = "0.25", default-features = false, features = ["png"] }
