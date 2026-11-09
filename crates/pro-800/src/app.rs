@@ -87,6 +87,8 @@ pub struct Pro800App {
     tab: Tab,
 
     slot: u16,
+    slot_buf: String,
+    slot_error: Option<String>,
     patch: Option<Patch>,
     snapshot: Option<Patch>,
     name_buf: String,
@@ -126,6 +128,8 @@ impl Pro800App {
             log: Log::default(),
             tab: Tab::Patch,
             slot: 0,
+            slot_buf: patch::slot_label(0),
+            slot_error: None,
             patch: None,
             snapshot: None,
             name_buf: String::new(),
@@ -169,6 +173,14 @@ impl Pro800App {
         app.refresh_ports();
         app.auto_connect(cc.egui_ctx.clone());
         app
+    }
+
+    /// Select a program slot and keep the editable field in sync.
+    fn set_slot(&mut self, index: u16) {
+        let index = index.min(patch::MAX_SLOT);
+        self.slot = index;
+        self.slot_buf = patch::slot_label(index);
+        self.slot_error = None;
     }
 
     // ------------------------------------------------------------ connection
@@ -423,7 +435,7 @@ impl Pro800App {
                     .zip(block.get(6).copied())
                     .map(|(lsb, msb)| patch::global_index(lsb, msb).min(patch::MAX_SLOT))
                     .unwrap_or(0);
-                self.slot = selected;
+                self.set_slot(selected);
                 self.queue_load(selected);
             }
             return;
@@ -722,7 +734,7 @@ impl Pro800App {
     // ------------------------------------------------------------------ patch
 
     fn load_patch(&mut self, patch: Patch) {
-        self.slot = patch.index;
+        self.set_slot(patch.index);
         self.name_buf = patch.name();
         self.snapshot = Some(patch.clone());
         self.patch = Some(patch);
@@ -955,7 +967,7 @@ impl Pro800App {
     }
 
     fn load_cached_or_read(&mut self, index: u16) {
-        self.slot = index;
+        self.set_slot(index);
         if let Some(patch) = self.lib.get(index).patch().cloned() {
             self.load_patch(patch);
         } else {
@@ -1050,41 +1062,6 @@ impl Pro800App {
                     self.tab = tab;
                 }
             }
-            ui.separator();
-            let mut slot = i64::from(self.slot);
-            if ui
-                .add(
-                    egui::DragValue::new(&mut slot)
-                        .range(0..=i64::from(patch::MAX_SLOT))
-                        .custom_formatter(|value, _| {
-                            patch::slot_label(value.clamp(0.0, 399.0) as u16)
-                        }),
-                )
-                .changed()
-            {
-                self.slot = slot.clamp(0, i64::from(patch::MAX_SLOT)) as u16;
-            }
-            if ui.button("Read").clicked() {
-                self.read_slot();
-            }
-            if ui
-                .add_enabled(
-                    self.connected() && self.patch.is_some(),
-                    egui::Button::new("Write"),
-                )
-                .clicked()
-            {
-                self.write_slot();
-            }
-            if ui
-                .add_enabled(self.snapshot.is_some(), egui::Button::new("Revert"))
-                .clicked()
-            {
-                self.revert();
-            }
-            if ui.button("Init").clicked() {
-                self.init_patch();
-            }
             if self.dirty {
                 ui.label(RichText::new("pending edits").color(WARN).size(11.0));
             }
@@ -1093,11 +1070,41 @@ impl Pro800App {
 
     fn patch_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(patch::slot_label(self.slot))
-                    .monospace()
-                    .strong(),
+            ui.label(RichText::new("Slot").color(MUTED).size(11.0));
+            let text_color = if self.slot_error.is_some() {
+                DANGER
+            } else {
+                Color32::from_gray(0xE8)
+            };
+            let edit = ui.add_sized(
+                [72.0, 22.0],
+                egui::TextEdit::singleline(&mut self.slot_buf)
+                    .font(egui::TextStyle::Monospace)
+                    .align(egui::Align2::CENTER_CENTER)
+                    .hint_text("B099")
+                    .text_color(text_color),
             );
+            if edit.lost_focus() {
+                match patch::parse_slot(&self.slot_buf) {
+                    Ok(index) => {
+                        self.set_slot(index);
+                        if self.connected() {
+                            self.read_slot();
+                        }
+                    }
+                    Err(err) => self.slot_error = Some(err),
+                }
+            }
+            match &self.slot_error {
+                Some(err) => {
+                    edit.on_hover_text(err);
+                    ui.label(RichText::new("invalid slot").color(DANGER).size(10.5));
+                }
+                None => {
+                    edit.on_hover_text("Program slot: B099, b94, 194 or 194/0xC2");
+                }
+            }
+            let slot_ok = self.slot_error.is_none();
             let name_width = 190.0;
             let response = ui.add_sized(
                 [name_width, 22.0],
@@ -1123,25 +1130,51 @@ impl Pro800App {
                 }
             }
             ui.separator();
-            if ui.button("Load from slot").clicked() {
+            if ui.add_enabled(slot_ok, egui::Button::new("Read")).clicked() {
                 self.read_slot();
             }
+            let editor_matches_slot = self
+                .patch
+                .as_ref()
+                .is_some_and(|patch| patch.index == self.slot);
             if ui
-                .add_enabled(self.connected(), egui::Button::new("Write to slot"))
+                .add_enabled(
+                    slot_ok && self.connected() && editor_matches_slot,
+                    egui::Button::new("Write"),
+                )
                 .clicked()
             {
                 self.write_slot();
             }
-            if ui.button("Revert to read").clicked() {
+            if let Some(patch) = &self.patch
+                && patch.index != self.slot
+            {
+                ui.label(
+                    RichText::new(format!("editor holds {}", patch::slot_label(patch.index)))
+                        .color(WARN)
+                        .size(10.5),
+                );
+            }
+            if ui
+                .add_enabled(self.snapshot.is_some(), egui::Button::new("Revert"))
+                .clicked()
+            {
                 self.revert();
             }
-            ui.separator();
-            ui.label(
-                RichText::new("live CC preview follows the knobs; Write stores the whole patch")
-                    .color(MUTED)
-                    .size(11.0),
-            );
+            if ui.button("Init").clicked() {
+                self.init_patch();
+            }
+            if self.dirty {
+                ui.label(RichText::new("pending edits").color(WARN).size(11.0));
+            }
         });
+        ui.label(
+            RichText::new(
+                "live CC preview follows the knobs; Write stores the whole patch, padded to 173 bytes",
+            )
+            .color(MUTED)
+            .size(10.5),
+        );
         ui.separator();
         if self.patch.is_none() {
             ui.vertical_centered(|ui| {
@@ -1501,7 +1534,7 @@ impl Pro800App {
             .min_size(egui::vec2(102.0, 32.0));
         let response = ui.add(button);
         if response.clicked() {
-            self.slot = index;
+            self.set_slot(index);
         }
         if response.double_clicked() {
             self.load_cached_or_read(index);
@@ -1857,20 +1890,22 @@ impl ShotApp {
         let mut inner = Pro800App::new(cc);
         // The screenshot path runs without hardware: show captured programs and
         // a captured global block so the picture documents the real surface.
+        let hardware = inner.connected();
         for fixture in [
             &include_bytes!("../../../verified/pro-800-a000.syx")[..],
             &include_bytes!("../../../verified/pro-800-b094.syx")[..],
             &include_bytes!("../../../verified/pro-800-c054.syx")[..],
         ] {
             for patch in patch::patches_from_syx(fixture) {
-                if patch.index == 0 {
+                if patch.index == 0 && !hardware {
                     inner.load_patch(patch.clone());
                 }
                 inner.lib.put(patch);
             }
         }
-        if let Some(block) =
-            patch::global_reply(include_bytes!("../../../verified/pro-800-globals.syx"))
+        if !hardware
+            && let Some(block) =
+                patch::global_reply(include_bytes!("../../../verified/pro-800-globals.syx"))
         {
             inner.globals = Some(block);
         }
