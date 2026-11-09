@@ -3,6 +3,8 @@
 //! Everything shown for parameters (tabs, sections, widgets, hints) comes from
 //! the [`Device`] descriptor, so a new instrument only supplies data.
 
+use std::path::PathBuf;
+
 use eframe::egui;
 use egui::RichText;
 
@@ -55,6 +57,7 @@ pub struct TribeApp {
     bank_target: u8,
     bank_readback: Option<(u8, Vec<u8>)>,
     confirm_bank_write: bool,
+    note_map_file: Option<PathBuf>,
 }
 
 impl TribeApp {
@@ -93,6 +96,7 @@ impl TribeApp {
             bank_target: 0,
             bank_readback: None,
             confirm_bank_write: false,
+            note_map_file: None,
         };
 
         cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
@@ -684,6 +688,11 @@ impl TribeApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                let slots = crate::note_map::slots(self.device);
+                if slots.first().is_some_and(|param| param.tab == tab) {
+                    self.note_map_controls(ui);
+                    ui.add_space(6.0);
+                }
                 for (section, params) in self.device.sections(tab) {
                     widgets::section(ui, section);
                     egui::Grid::new(format!("{tab}/{section}"))
@@ -701,6 +710,71 @@ impl TribeApp {
                     ui.weak(format!("• {line}"));
                 }
             });
+    }
+
+    // ------------------------------------------------------- note map file
+
+    /// Load/save the note slots as a plain-text file. Loading only fills the
+    /// sliders; the device is written by auto-apply or Send all like any edit.
+    fn note_map_controls(&mut self, ui: &mut egui::Ui) {
+        widgets::section(ui, "Note map file");
+        ui.horizontal(|ui| {
+            if ui
+                .button("Load text…")
+                .on_hover_text("Read a plain-text note map into the slots; nothing is sent")
+                .clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Note map text", &["txt"])
+                    .pick_file()
+            {
+                match crate::note_map::load_file(self.device, &path) {
+                    Ok(file) => {
+                        for (param, note) in
+                            crate::note_map::slots(self.device).iter().zip(&file.notes)
+                        {
+                            self.values.set(param.id, *note);
+                        }
+                        self.dirty = true;
+                        self.log.info(format!(
+                            "{}: {} note slots loaded into the sliders (not sent)",
+                            file.path.display(),
+                            file.notes.len()
+                        ));
+                        self.note_map_file = Some(file.path);
+                    }
+                    Err(err) => self.log.error(err),
+                }
+            }
+            if ui
+                .button("Save text…")
+                .on_hover_text("Write the current slider values to a plain-text note map")
+                .clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("note-map.txt")
+                    .add_filter("Note map text", &["txt"])
+                    .save_file()
+            {
+                match crate::note_map::save_file(self.device, &self.values, &path) {
+                    Ok(count) => self
+                        .log
+                        .info(format!("saved {count} note slots to {}", path.display())),
+                    Err(err) => self.log.error(err),
+                }
+            }
+        });
+        match &self.note_map_file {
+            Some(path) if self.dirty => ui.label(
+                RichText::new(format!(
+                    "loaded {} · changes staged, Send all writes them",
+                    path.display()
+                ))
+                .color(WARN),
+            ),
+            Some(path) => ui.weak(format!("loaded {}", path.display())),
+            None => ui.weak(
+                "one `slotNN = note` line per slot; bare values and note names (C2, C#2, Db2) also load",
+            ),
+        };
     }
 
     fn play_tab(&mut self, ui: &mut egui::Ui) {
@@ -1023,15 +1097,15 @@ impl TribeApp {
                         egui::Slider::new(&mut target, 0..=spec.count.saturating_sub(1)).text(""),
                     );
                     self.bank_target = target as u8;
-                    if ui.button("Read bank").clicked() {
-                        if let Some(bytes) = crate::banks::read_request(
+                    if ui.button("Read bank").clicked()
+                        && let Some(bytes) = crate::banks::read_request(
                             self.device,
                             self.device_id,
                             self.bank_target,
-                        ) {
-                            self.bank_readback = None;
-                            self.send_message("read bank record", bytes);
-                        }
+                        )
+                    {
+                        self.bank_readback = None;
+                        self.send_message("read bank record", bytes);
                     }
                     if ui.button("Load .syx…").clicked()
                         && let Some(path) = rfd::FileDialog::new()
@@ -1098,7 +1172,10 @@ impl TribeApp {
                 }
 
                 ui.add_space(8.0);
-                ui.weak(format!("{} banks · record size varies", spec.count));
+                ui.weak(format!(
+                    "{} banks · single-bank exports are 497 B; the bank 1 backup record is 665 B",
+                    spec.count
+                ));
             });
 
         if self.confirm_bank_write

@@ -10,6 +10,7 @@ pub mod cli;
 pub mod descriptor;
 pub mod log;
 pub mod midi;
+pub mod note_map;
 pub mod samples;
 pub mod screenshot;
 pub mod sysex;

@@ -53,7 +53,9 @@ map, MIDI channel, MIDI through, clock source and rate, end mode, three trigger 
 read-first: on connect it asks the device which slots are empty and which hold a sample
 (slots show *not read* until that frame is captured), and it imports and exports WAV files
 into the slots locally (mono 16-bit, any WAV encoding `hound` reads); transfer to and from
-the instrument waits for captured transfer frames.
+the instrument waits for captured transfer frames. The **Note map** tab loads and saves its 16
+slots as a plain-text file (`slotNN = note` lines, `#` comments, numbers or note names such as
+`C2`/`C#2`/`Db2`); loading fills the sliders and stages the change, and **Send all** writes it.
 
 ## Screenshots
 

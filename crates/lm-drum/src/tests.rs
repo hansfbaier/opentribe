@@ -261,3 +261,22 @@ fn bank_import_frame_targets_the_selected_bank() {
         .unwrap_or_else(|| panic!("bank read request"));
     assert_eq!(sysex::hex(&request), "F0 00 20 32 00 01 28 00 77 4F F7");
 }
+
+#[test]
+fn note_map_file_round_trips_the_descriptor_slots() {
+    let path = std::env::temp_dir().join(format!(
+        "opentribe-test-{}-lm-drum-note-map.txt",
+        std::process::id()
+    ));
+    let mut values = Values::defaults(DEVICE);
+    for slot in 1..=16u8 {
+        values.set(&format!("note.slot{slot:02}"), 30 + slot);
+    }
+    assert_eq!(
+        tribe_core::note_map::save_file(DEVICE, &values, &path),
+        Ok(16)
+    );
+    let file = tribe_core::note_map::load_file(DEVICE, &path).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(file.notes, (31..=46).collect::<Vec<u8>>());
+    let _ = std::fs::remove_file(&path);
+}
